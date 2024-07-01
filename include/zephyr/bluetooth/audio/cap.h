@@ -151,6 +151,12 @@ union bt_cap_set_member {
 	struct bt_csip_set_coordinator_csis_inst *csip;
 };
 
+/**
+ * @brief Common Audio Profile stream structure.
+ *
+ * Streams represents a Basic Audio Profile (BAP) stream and operation callbacks.
+ * See @ref bt_bap_stream for additional information.
+ */
 struct bt_cap_stream {
 	struct bt_bap_stream bap_stream;
 	struct bt_bap_stream_ops *ops;
@@ -383,6 +389,10 @@ int bt_cap_initiator_unicast_audio_stop(const struct bt_cap_unicast_audio_stop_p
  */
 int bt_cap_initiator_unicast_audio_cancel(void);
 
+/**
+ * Parameters part of @p bt_cap_initiator_broadcast_subgroup_param for
+ * bt_cap_initiator_broadcast_audio_create()
+ */
 struct bt_cap_initiator_broadcast_stream_param {
 	/** Audio stream */
 	struct bt_cap_stream *stream;
@@ -397,6 +407,10 @@ struct bt_cap_initiator_broadcast_stream_param {
 	uint8_t *data;
 };
 
+/**
+ * Parameters part of @p bt_cap_initiator_broadcast_create_param for
+ * bt_cap_initiator_broadcast_audio_create()
+ */
 struct bt_cap_initiator_broadcast_subgroup_param {
 	/** The number of parameters in @p stream_params */
 	size_t stream_count;
@@ -408,6 +422,7 @@ struct bt_cap_initiator_broadcast_subgroup_param {
 	struct bt_audio_codec_cfg *codec_cfg;
 };
 
+/** Parameters for * bt_cap_initiator_broadcast_audio_create() */
 struct bt_cap_initiator_broadcast_create_param {
 	/** The number of parameters in @p subgroup_params */
 	size_t subgroup_count;
@@ -597,6 +612,7 @@ int bt_cap_initiator_broadcast_get_id(const struct bt_cap_broadcast_source *broa
 int bt_cap_initiator_broadcast_get_base(struct bt_cap_broadcast_source *broadcast_source,
 					struct net_buf_simple *base_buf);
 
+/** Parameters for  bt_cap_initiator_unicast_to_broadcast() */
 struct bt_cap_unicast_to_broadcast_param {
 	/** The source unicast group with the streams. */
 	struct bt_bap_unicast_group *unicast_group;
@@ -643,6 +659,7 @@ struct bt_cap_unicast_to_broadcast_param {
 int bt_cap_initiator_unicast_to_broadcast(const struct bt_cap_unicast_to_broadcast_param *param,
 					  struct bt_cap_broadcast_source **source);
 
+/** Parameters for  bt_cap_initiator_broadcast_to_unicast() */
 struct bt_cap_broadcast_to_unicast_param {
 	/**
 	 * @brief The source broadcast source with the streams.
@@ -851,6 +868,10 @@ int bt_cap_commander_discover(struct bt_conn *conn);
  */
 int bt_cap_commander_cancel(void);
 
+/**
+ * Parameters part of @ref bt_cap_commander_broadcast_reception_start_param for
+ * bt_cap_commander_broadcast_reception_start()
+ */
 struct bt_cap_commander_broadcast_reception_start_member_param {
 	/** Coordinated or ad-hoc set member. */
 	union bt_cap_set_member member;
