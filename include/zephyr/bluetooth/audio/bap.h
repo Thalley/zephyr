@@ -300,6 +300,11 @@ struct bt_bap_scan_delegator_recv_state {
 	struct bt_bap_bass_subgroup subgroups[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS];
 };
 
+/**
+ * @brief Struct to hold the Basic Audio Profile Scan Delegator callbacks
+ *
+ * These can be registered for usage with bt_bap_scan_delegator_register_cb().
+ */
 struct bt_bap_scan_delegator_cb {
 	/**
 	 * @brief Receive state updated
@@ -1095,6 +1100,7 @@ struct bt_bap_unicast_group_stream_pair_param {
 	struct bt_bap_unicast_group_stream_param *tx_param;
 };
 
+/** Parameters for the creating unicast groups with bt_bap_unicast_group_create() */
 struct bt_bap_unicast_group_param {
 	/** The number of parameters in @p params */
 	size_t params_count;
@@ -1422,7 +1428,7 @@ struct bt_bap_base_codec_id {
 
 /** BIS structure for each BIS in a Broadcast Audio Source Endpoint (BASE) subgroup */
 struct bt_bap_base_subgroup_bis {
-	/* Unique index of the BIS */
+	/** Unique index of the BIS */
 	uint8_t index;
 	/** Codec Specific Data length. */
 	uint8_t data_len;
@@ -1978,6 +1984,7 @@ int bt_bap_scan_delegator_set_bis_sync_state(
 	uint8_t src_id,
 	uint32_t bis_synced[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS]);
 
+/** Parameters for bt_bap_scan_delegator_add_src() */
 struct bt_bap_scan_delegator_add_src_param {
 	/** The periodic adverting sync */
 	struct bt_le_per_adv_sync *pa_sync;
@@ -2010,6 +2017,7 @@ struct bt_bap_scan_delegator_add_src_param {
  */
 int bt_bap_scan_delegator_add_src(const struct bt_bap_scan_delegator_add_src_param *param);
 
+/** Parameters for bt_bap_scan_delegator_mod_src() */
 struct bt_bap_scan_delegator_mod_src_param {
 	/** The periodic adverting sync */
 	uint8_t src_id;
@@ -2104,6 +2112,11 @@ const struct bt_bap_scan_delegator_recv_state *bt_bap_scan_delegator_find_state(
 typedef void (*bt_bap_broadcast_assistant_write_cb)(struct bt_conn *conn,
 						    int err);
 
+/**
+ * @brief Struct to hold the Basic Audio Profile Broadcast Assistant callbacks
+ *
+ * These can be registered for usage with bt_bap_broadcast_assistant_register_cb().
+ */
 struct bt_bap_broadcast_assistant_cb {
 	/**
 	 * @brief Callback function for bt_bap_broadcast_assistant_discover.
