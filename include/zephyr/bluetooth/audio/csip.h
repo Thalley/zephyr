@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2021-2022 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -37,6 +37,10 @@ extern "C" {
 /** Recommended timer for member discovery */
 #define BT_CSIP_SET_COORDINATOR_DISCOVER_TIMER_VALUE        K_SECONDS(10)
 
+/**
+ * Defines the maximum number of Coordinated Set Identification service instances for the
+ * Coordinated Set Identification Set Coordinoatr
+ */
 #if defined(CONFIG_BT_CSIP_SET_COORDINATOR)
 #define BT_CSIP_SET_COORDINATOR_MAX_CSIS_INSTANCES CONFIG_BT_CSIP_SET_COORDINATOR_MAX_CSIS_INSTANCES
 #else
@@ -287,6 +291,7 @@ struct bt_csip_set_coordinator_set_info {
  * (bt_csip_set_coordinator_discover()).
  */
 struct bt_csip_set_coordinator_csis_inst {
+	/** Information about the coordinated set */
 	struct bt_csip_set_coordinator_set_info info;
 
 	/** Internally used pointer value */
@@ -388,6 +393,11 @@ typedef void (*bt_csip_set_coordinator_ordered_access_cb_t)(
 	int err, bool locked,
 	struct bt_csip_set_coordinator_set_member *member);
 
+/**
+ * @brief Struct to hold the Coordinated Set Identification Profile Set Coordinator callbacks
+ *
+ * These can be registered for usage with bt_csip_set_coordinator_register_cb().
+ */
 struct bt_csip_set_coordinator_cb {
 	/* Set callbacks */
 	bt_csip_set_coordinator_lock_set_cb             lock_set;
