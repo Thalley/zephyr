@@ -77,14 +77,9 @@ struct gtbs_service_inst {
 	struct service_inst inst;
 };
 
-#if defined(CONFIG_BT_GTBS)
-#define READ_BUF_SIZE   (CONFIG_BT_TBS_MAX_CALLS * \
-			 sizeof(struct bt_tbs_current_call_item) * \
-			 CONFIG_BT_TBS_BEARER_COUNT)
-#else
-#define READ_BUF_SIZE   (CONFIG_BT_TBS_MAX_CALLS * \
-			 sizeof(struct bt_tbs_current_call_item))
-#endif /* defined(CONFIG_BT_GTBS) */
+#define READ_BUF_SIZE                                                                              \
+	(CONFIG_BT_TBS_MAX_CALLS * sizeof(struct bt_tbs_current_call_item) *                       \
+	 (1 + CONFIG_BT_TBS_BEARER_COUNT))
 NET_BUF_SIMPLE_DEFINE_STATIC(read_buf, READ_BUF_SIZE);
 
 static struct tbs_service_inst svc_insts[CONFIG_BT_TBS_BEARER_COUNT];
@@ -98,7 +93,7 @@ static struct bt_tbs_cb *tbs_cbs;
 
 static bool inst_is_gtbs(const struct service_inst *inst)
 {
-	return IS_ENABLED(CONFIG_BT_GTBS) && inst == &gtbs_inst.inst;
+	return inst == &gtbs_inst.inst;
 }
 
 static uint8_t inst_index(const struct service_inst *inst)
@@ -122,7 +117,7 @@ static uint8_t inst_index(const struct service_inst *inst)
 
 static struct service_inst *inst_lookup_index(uint8_t index)
 {
-	if (IS_ENABLED(CONFIG_BT_GTBS) && index == BT_TBS_GTBS_INDEX) {
+	if (index == BT_TBS_GTBS_INDEX) {
 		return &gtbs_inst.inst;
 	}
 
@@ -197,7 +192,7 @@ static struct service_inst *lookup_inst_by_attr(const struct bt_gatt_attr *attr)
 		}
 	}
 
-	if (IS_ENABLED(CONFIG_BT_GTBS) && inst_check_attr(&gtbs_inst.inst, attr)) {
+	if (inst_check_attr(&gtbs_inst.inst, attr)) {
 		return &gtbs_inst.inst;
 	}
 
@@ -298,17 +293,13 @@ static void tbs_set_terminate_reason(struct tbs_service_inst *inst,
 	LOG_DBG("Index %u: call index 0x%02x, reason %s", inst_index(&inst->inst), call_index,
 		bt_tbs_term_reason_str(reason));
 
-	bt_gatt_notify_uuid(NULL, BT_UUID_TBS_TERMINATE_REASON,
-			    inst->inst.attrs,
-			    (void *)&inst->terminate_reason,
-			    sizeof(inst->terminate_reason));
+	/* Notify GTBS */
+	bt_gatt_notify_uuid(NULL, BT_UUID_TBS_TERMINATE_REASON, gtbs_inst.inst.attrs,
+			    (void *)&inst->terminate_reason, sizeof(inst->terminate_reason));
 
-	if (IS_ENABLED(CONFIG_BT_GTBS)) {
-		bt_gatt_notify_uuid(NULL, BT_UUID_TBS_TERMINATE_REASON,
-				    gtbs_inst.inst.attrs,
-				    (void *)&inst->terminate_reason,
-				    sizeof(inst->terminate_reason));
-	}
+	/* Notify TBS */
+	bt_gatt_notify_uuid(NULL, BT_UUID_TBS_TERMINATE_REASON, inst->inst.attrs,
+			    (void *)&inst->terminate_reason, sizeof(inst->terminate_reason));
 }
 
 /**
@@ -494,19 +485,19 @@ static int inst_notify_calls(const struct service_inst *inst)
 
 static int notify_calls(const struct tbs_service_inst *inst)
 {
+	int err;
+
 	if (inst == NULL) {
 		return -EINVAL;
 	}
 
-	if (IS_ENABLED(CONFIG_BT_GTBS)) {
-		int err;
-
-		err = inst_notify_calls(&gtbs_inst.inst);
-		if (err != 0) {
-			return err;
-		}
+	/* Notify GTBS */
+	err = inst_notify_calls(&gtbs_inst.inst);
+	if (err != 0) {
+		return err;
 	}
 
+	/* Notify TBS */
 	return inst_notify_calls(&inst->inst);
 }
 
@@ -1560,16 +1551,7 @@ static void in_call_cfg_changed(const struct bt_gatt_attr *attr,
 
 #define BT_TBS_SERVICE_DEFINITION(_inst) { BT_TBS_SERVICE_DEFINE(BT_UUID_TBS, &(_inst).inst) }
 
-/*
- * Defining this as extern make it possible to link code that otherwise would
- * give "unknown identifier" linking errors.
- */
-extern const struct bt_gatt_service_static gtbs_svc;
-
-/* TODO: Can we make the multiple service instance more generic? */
-#if CONFIG_BT_GTBS
 BT_GATT_SERVICE_DEFINE(gtbs_svc, BT_TBS_SERVICE_DEFINE(BT_UUID_GTBS, &gtbs_inst.inst));
-#endif /* CONFIG_BT_GTBS */
 
 BT_GATT_SERVICE_INSTANCE_DEFINE(tbs_service_list, svc_insts, CONFIG_BT_TBS_BEARER_COUNT,
 				BT_TBS_SERVICE_DEFINITION);
@@ -1629,6 +1611,8 @@ static void tbs_service_inst_init(struct tbs_service_inst *inst, struct bt_gatt_
 
 static int bt_tbs_init(void)
 {
+	gtbs_service_inst_init(&gtbs_inst, &gtbs_svc);
+
 	for (size_t i = 0; i < ARRAY_SIZE(svc_insts); i++) {
 		int err;
 
@@ -1638,10 +1622,6 @@ static int bt_tbs_init(void)
 		}
 
 		tbs_service_inst_init(&svc_insts[i], &tbs_service_list[i]);
-	}
-
-	if (IS_ENABLED(CONFIG_BT_GTBS)) {
-		gtbs_service_inst_init(&gtbs_inst, &gtbs_svc);
 	}
 
 	return 0;
@@ -1951,11 +1931,11 @@ int bt_tbs_remote_incoming(uint8_t bearer_index, const char *to,
 
 	BT_TBS_CALL_FLAG_SET_INCOMING(call->flags);
 
-	tbs_inst_remote_incoming(inst, to, from, friendly_name, call);
+	/* Notify GTBS */
+	tbs_inst_remote_incoming(&gtbs_inst.inst, to, from, friendly_name, call);
 
-	if (IS_ENABLED(CONFIG_BT_GTBS)) {
-		tbs_inst_remote_incoming(&gtbs_inst.inst, to, from, friendly_name, call);
-	}
+	/* Notify TBS*/
+	tbs_inst_remote_incoming(inst, to, from, friendly_name, call);
 
 	notify_calls(service_inst);
 
@@ -2066,6 +2046,8 @@ int bt_tbs_set_uri_scheme_list(uint8_t bearer_index, const char **uri_list,
 	size_t len = 0;
 	struct tbs_service_inst *inst;
 
+	NET_BUF_SIMPLE_DEFINE(uri_scheme_buf, READ_BUF_SIZE);
+
 	if (bearer_index >= CONFIG_BT_TBS_BEARER_COUNT) {
 		return -EINVAL;
 	}
@@ -2106,30 +2088,25 @@ int bt_tbs_set_uri_scheme_list(uint8_t bearer_index, const char **uri_list,
 			    inst->inst.attrs, &inst->uri_scheme_list,
 			    strlen(inst->uri_scheme_list));
 
-	if (IS_ENABLED(CONFIG_BT_GTBS)) {
-		NET_BUF_SIMPLE_DEFINE(uri_scheme_buf, READ_BUF_SIZE);
+	/* Notify GTBS */
 
-		/* TODO: Make uri schemes unique */
-		for (int i = 0; i < ARRAY_SIZE(svc_insts); i++) {
-			const size_t uri_len = strlen(svc_insts[i].uri_scheme_list);
+	/* TODO: Make uri schemes unique */
+	for (size_t i = 0U; i < ARRAY_SIZE(svc_insts); i++) {
+		const size_t uri_len = strlen(svc_insts[i].uri_scheme_list);
 
-			if (uri_scheme_buf.len + uri_len >= uri_scheme_buf.size) {
-				LOG_WRN("Cannot fit all TBS instances in GTBS "
-					"URI scheme list");
-				break;
-			}
-
-			net_buf_simple_add_mem(&uri_scheme_buf,
-					       svc_insts[i].uri_scheme_list,
-					       uri_len);
+		if (uri_scheme_buf.len + uri_len >= uri_scheme_buf.size) {
+			LOG_WRN("Cannot fit all TBS instances in GTBS "
+				"URI scheme list");
+			break;
 		}
 
-		LOG_DBG("GTBS: URI scheme %.*s", uri_scheme_buf.len, uri_scheme_buf.data);
-
-		bt_gatt_notify_uuid(NULL, BT_UUID_TBS_URI_LIST,
-				    inst->inst.attrs,
-				    uri_scheme_buf.data, uri_scheme_buf.len);
+		net_buf_simple_add_mem(&uri_scheme_buf, svc_insts[i].uri_scheme_list, uri_len);
 	}
+
+	LOG_DBG("GTBS: URI scheme %.*s", uri_scheme_buf.len, uri_scheme_buf.data);
+
+	bt_gatt_notify_uuid(NULL, BT_UUID_TBS_URI_LIST, gtbs_inst.inst.attrs, uri_scheme_buf.data,
+			    uri_scheme_buf.len);
 
 	return 0;
 }
