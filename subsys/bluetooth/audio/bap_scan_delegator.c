@@ -1145,9 +1145,14 @@ static ssize_t read_recv_state(struct bt_conn *conn,
 
 		return ret_val;
 	}
-	LOG_DBG("Index %u: Not active", idx);
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, NULL, 0);
 
+	LOG_DBG("Index %u: Not active", idx);
+
+	if (offset != 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+
+	return 0;
 }
 
 #define RECEIVE_STATE_CHARACTERISTIC(idx) \
