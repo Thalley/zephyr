@@ -6,6 +6,7 @@
 
 #ifndef MOCKS_CONN_H_
 #define MOCKS_CONN_H_
+#include <stdint.h>
 
 #include <zephyr/bluetooth/conn.h>
 

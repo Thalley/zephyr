@@ -3,8 +3,10 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#include <stdint.h>
 
 #include <zephyr/bluetooth/conn.h>
+#include <zephyr/sys/iterable_sections.h>
 
 #include "conn.h"
 
