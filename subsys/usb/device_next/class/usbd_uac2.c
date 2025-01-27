@@ -4,7 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <zephyr/kernel.h>
+#include <zephyr/sys/__assert.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 
@@ -209,9 +213,31 @@ static int terminal_to_as_interface(const struct device *dev, uint8_t terminal)
 void usbd_uac2_set_ops(const struct device *dev,
 		       const struct uac2_ops *ops, void *user_data)
 {
+	const struct uac2_cfg *cfg = dev->config;
 	struct uac2_ctx *ctx = dev->data;
 
 	__ASSERT(ops->sof_cb, "SOF callback is mandatory");
+	__ASSERT(ops->terminal_update_cb, "terminal_update_cb is mandatory");
+
+	for (uint8_t i = 0U; i < cfg->num_ifaces; i++) {
+		if (cfg->fb_indexes[i] != 0U) {
+			__ASSERT(ops->feedback_cb, "feedback_cb is mandatory");
+		}
+
+		if (cfg->ep_indexes[i] != 0U) {
+			const struct usb_ep_descriptor *desc = get_as_data_ep(cfg->c_data, i);
+
+			if (desc != NULL) {
+				if (USB_EP_DIR_IS_OUT(desc->bEndpointAddress)) {
+					__ASSERT(ops->get_recv_buf, "get_recv_buf is mandatory");
+					__ASSERT(ops->data_recv_cb, "data_recv_cb is mandatory");
+				} else if (USB_EP_DIR_IS_IN(desc->bEndpointAddress)) {
+					__ASSERT(ops->buf_release_cb,
+						 "buf_release_cb is mandatory");
+				}
+			}
+		}
+	}
 
 	ctx->ops = ops;
 	ctx->user_data = user_data;
