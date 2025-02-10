@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config LOG_BACKEND_BLE
-	bool "Bluetooth Low Energy (BLE) backend"
+	bool "Bluetooth Low Energy (LE) backend"
 	depends on BT
 	depends on LOG_PROCESS_THREAD_STACK_SIZE>=2048
 	select EXPERIMENTAL
@@ -15,8 +15,8 @@ config LOG_BACKEND_BLE
 
 if LOG_BACKEND_BLE
 
-backend = BLE
-backend-str = ble
+backend = BT
+backend-str = bt
 source "subsys/logging/Kconfig.template.log_format_config"
 
 endif # LOG_BACKEND_BLE
