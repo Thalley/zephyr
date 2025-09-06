@@ -101,6 +101,74 @@ static bool check_pull_ltv(struct net_buf_simple *net_buf)
 	return true;
 }
 
+static struct bt_bap_base_subgroup *base_pull_subgroup(struct net_buf_simple *net_buf,
+						       uint8_t index)
+{
+	struct bt_bap_base_subgroup *subgroup = (struct bt_bap_base_subgroup *)net_buf->data;
+	uint8_t bis_count;
+
+	if (net_buf->len < sizeof(bis_count)) {
+		LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+		return NULL;
+	}
+
+	bis_count = base_pull_bis_count(net_buf);
+	if (!IN_RANGE(bis_count, 1U, BT_ISO_MAX_GROUP_ISO_COUNT)) {
+		LOG_DBG("Subgroup[%u]: Invalid BIS count: %u", index, bis_count);
+
+		return NULL;
+	}
+
+	if (net_buf->len < BASE_CODEC_ID_SIZE) {
+		LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+		return NULL;
+	}
+
+	base_pull_codec_id(net_buf, NULL);
+
+	/* Pull CC */
+	if (!check_pull_ltv(net_buf)) {
+		LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+		return NULL;
+	}
+
+	/* Pull meta */
+	if (!check_pull_ltv(net_buf)) {
+		LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+		return NULL;
+	}
+
+	for (uint8_t i = 0U; i < bis_count; i++) {
+		uint8_t bis_index;
+
+		if (net_buf->len < sizeof(bis_index)) {
+			LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+			return NULL;
+		}
+
+		bis_index = net_buf_simple_pull_u8(net_buf);
+		if (!IN_RANGE(bis_index, 1U, BT_ISO_BIS_INDEX_MAX)) {
+			LOG_DBG("Subgroup[%u]: Invalid BIS index: %u", index, bis_index);
+
+			return NULL;
+		}
+
+		/* Pull BIS CC data */
+		if (!check_pull_ltv(net_buf)) {
+			LOG_DBG("Invalid BASE length: %u", net_buf->size);
+
+			return NULL;
+		}
+	}
+
+	return subgroup;
+}
+
 const struct bt_bap_base *bt_bap_base_get_base_from_ad(const struct bt_data *ad)
 {
 	struct bt_uuid_16 broadcast_uuid;
@@ -155,65 +223,12 @@ const struct bt_bap_base *bt_bap_base_get_base_from_ad(const struct bt_data *ad)
 	}
 
 	for (uint8_t i = 0U; i < subgroup_count; i++) {
-		uint8_t bis_count;
+		const struct bt_bap_base_subgroup *subgroup = base_pull_subgroup(&net_buf, i);
 
-		if (net_buf.len < sizeof(bis_count)) {
-			LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-			return NULL;
-		}
-
-		bis_count = base_pull_bis_count(&net_buf);
-		if (!IN_RANGE(bis_count, 1U, BT_ISO_MAX_GROUP_ISO_COUNT)) {
-			LOG_DBG("Subgroup[%u]: Invalid BIS count: %u", i, bis_count);
+		if (subgroup == NULL) {
+			LOG_DBG("Subgroup[%u] is invalid", i);
 
 			return NULL;
-		}
-
-		if (net_buf.len < BASE_CODEC_ID_SIZE) {
-			LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-			return NULL;
-		}
-
-		base_pull_codec_id(&net_buf, NULL);
-
-		/* Pull CC */
-		if (!check_pull_ltv(&net_buf)) {
-			LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-			return NULL;
-		}
-
-		/* Pull meta */
-		if (!check_pull_ltv(&net_buf)) {
-			LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-			return NULL;
-		}
-
-		for (uint8_t j = 0U; j < bis_count; j++) {
-			uint8_t bis_index;
-
-			if (net_buf.len < sizeof(bis_index)) {
-				LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-				return NULL;
-			}
-
-			bis_index = net_buf_simple_pull_u8(&net_buf);
-			if (!IN_RANGE(bis_index, 1U, BT_ISO_BIS_INDEX_MAX)) {
-				LOG_DBG("Subgroup[%u]: Invalid BIS index: %u", i, bis_index);
-
-				return NULL;
-			}
-
-			/* Pull BIS CC data */
-			if (!check_pull_ltv(&net_buf)) {
-				LOG_DBG("Invalid BASE length: %u", ad->data_len);
-
-				return NULL;
-			}
 		}
 	}
 
@@ -247,7 +262,7 @@ int bt_bap_base_get_size(const struct bt_bap_base *base)
 		size += BASE_NUM_BIS_SIZE;
 
 		base_pull_codec_id(&net_buf, NULL);
-		size += BASE_CODEC_ID_SIZE;
+		size += BASE_CODEC_I & net_bufD_SIZE;
 
 		/* Codec config */
 		len = base_pull_ltv(&net_buf, NULL);
