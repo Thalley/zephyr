@@ -140,6 +140,10 @@ static ZTEST_F(cap_initiator_test_unicast_stop,
 		zassert_equal(state, BT_BAP_EP_STATE_CODEC_CONFIGURED,
 			      "[%zu]: Stream %p unexpected state: %d", i, bap_stream, state);
 	}
+
+	if (err) {
+		return;
+	}
 }
 
 static ZTEST_F(cap_initiator_test_unicast_stop,
