@@ -291,6 +291,11 @@ int main(void)
 				return 0;
 			}
 
+			err = blink_setup();
+			if (err) {
+				return 0;
+			}
+
 #else /* CONFIG_BT_EXT_ADV */
 			printk("Starting Extended Advertising (connectable and non-scannable)\n");
 			err = bt_le_ext_adv_start(adv, BT_LE_EXT_ADV_START_DEFAULT);
