@@ -96,7 +96,7 @@ int has_server_init(void)
 	}
 
 	err = bt_has_register(&features);
-	if (err != 0) {
+	if (err) {
 		return err;
 	}
 

@@ -555,7 +555,7 @@ int bap_unicast_sr_init(void)
 	int err;
 
 	err = bt_pacs_register(&pacs_param);
-	if (err != 0) {
+	if (err) {
 		printk("Could not register PACS (err %d)\n", err);
 		return err;
 	}

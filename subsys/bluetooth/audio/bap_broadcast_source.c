@@ -1171,7 +1171,7 @@ int bt_bap_broadcast_source_stop(struct bt_bap_broadcast_source *source)
 	}
 
 	err = bt_iso_big_terminate(source->big);
-	if (err != 0) {
+	if (err) {
 		LOG_DBG("Failed to terminate BIG (err %d)", err);
 		return err;
 	}

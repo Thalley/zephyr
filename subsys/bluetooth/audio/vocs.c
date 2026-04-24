@@ -458,7 +458,7 @@ int bt_vocs_register(struct bt_vocs *vocs,
 	}
 
 	err = bt_gatt_service_register(inst->service_p);
-	if (err != 0) {
+	if (err) {
 		LOG_DBG("Could not register VOCS service");
 		return err;
 	}

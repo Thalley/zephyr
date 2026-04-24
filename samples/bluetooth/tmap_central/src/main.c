@@ -54,7 +54,7 @@ void tmap_discovery_complete(enum bt_tmap_role role, struct bt_conn *conn, int e
 		return;
 	}
 
-	if (err != 0) {
+	if (err) {
 		printk("TMAS discovery failed! (err %d)\n", err);
 		return;
 	}

@@ -665,7 +665,7 @@ static void init(void)
 	LOG_DBG("Bluetooth initialized");
 
 	err = bt_pacs_register(&pacs_param);
-	if (err != 0) {
+	if (err) {
 		FAIL("Could not register PACS (err %d)\n", err);
 		return;
 	}

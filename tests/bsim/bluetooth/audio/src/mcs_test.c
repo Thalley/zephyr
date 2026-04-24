@@ -25,14 +25,14 @@ static void test_main(void)
 
 	/* Initialize media player */
 	err = media_proxy_pl_init();
-	if (err != 0) {
+	if (err) {
 		FAIL("Initializing MPL failed (err %d)", err);
 		return;
 	}
 
 	/* Initialize Bluetooth, get connected */
 	err = bt_enable(NULL);
-	if (err != 0) {
+	if (err) {
 		FAIL("Bluetooth init failed (err %d)\n", err);
 		return;
 	}

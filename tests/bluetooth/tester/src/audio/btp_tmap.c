@@ -37,7 +37,7 @@ static void tmap_discover_cb(enum bt_tmap_role role, struct bt_conn *conn, int e
 {
 	struct btp_tmap_discovery_complete_ev ev;
 
-	if (err != 0) {
+	if (err) {
 		LOG_ERR("Discovery failed (%d)", err);
 	}
 
