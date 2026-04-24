@@ -73,7 +73,7 @@ static void test_main(void)
 
 	printk("Raising security\n");
 	err = bt_conn_set_security(default_conn, BT_SECURITY_L2);
-	if (err) {
+	if (err != 0) {
 		FAIL("Failed to ser security level %d (err %d)\n", BT_SECURITY_L2, err);
 		return;
 	}
@@ -106,7 +106,7 @@ static void test_main(void)
 
 	printk("Raising security\n");
 	err = bt_conn_set_security(default_conn, BT_SECURITY_L2);
-	if (err) {
+	if (err != 0) {
 		FAIL("Failed to ser security level %d (err %d)\n", BT_SECURITY_L2, err);
 		return;
 	}
