@@ -1709,7 +1709,7 @@ static uint8_t unicast_client_ase_ntf_read_func(struct bt_conn *conn, uint8_t er
 
 	LOG_DBG("conn %p err 0x%02x len %u", conn, err, length);
 
-	if (err) {
+	if (err != 0) {
 		LOG_DBG("Failed to read ASE: %u", err);
 
 		return BT_GATT_ITER_STOP;
@@ -3533,7 +3533,7 @@ int bt_bap_unicast_client_enable(struct bt_bap_stream *stream, const uint8_t met
 	req->num_ases = 0x01;
 
 	err = unicast_client_ep_enable(ep, buf, meta, meta_len);
-	if (err) {
+	if (err != 0) {
 		return err;
 	}
 
@@ -3566,7 +3566,7 @@ int bt_bap_unicast_client_metadata(struct bt_bap_stream *stream, const uint8_t m
 	req->num_ases = 0x01;
 
 	err = unicast_client_ep_metadata(ep, buf, meta, meta_len);
-	if (err) {
+	if (err != 0) {
 		return err;
 	}
 
@@ -3682,7 +3682,7 @@ int bt_bap_unicast_client_disable(struct bt_bap_stream *stream)
 	req->num_ases = 0x01;
 
 	err = unicast_client_ep_disable(ep, buf);
-	if (err) {
+	if (err != 0) {
 		return err;
 	}
 
@@ -3718,7 +3718,7 @@ int bt_bap_unicast_client_stop(struct bt_bap_stream *stream)
 	 */
 	if (ep->dir == BT_AUDIO_DIR_SOURCE) {
 		err = unicast_client_ep_stop(ep, buf);
-		if (err) {
+		if (err != 0) {
 			return err;
 		}
 		req->num_ases++;
@@ -3771,7 +3771,7 @@ int bt_bap_unicast_client_release(struct bt_bap_stream *stream)
 		bt_bap_stream_reset(stream);
 	} else {
 		err = unicast_client_ep_release(ep, buf);
-		if (err) {
+		if (err != 0) {
 			return err;
 		}
 	}
@@ -3844,7 +3844,7 @@ static uint8_t unicast_client_ase_read_func(struct bt_conn *conn, uint8_t err,
 
 	LOG_DBG("conn %p err 0x%02x len %u", conn, err, length);
 
-	if (err) {
+	if (err != 0) {
 		cb_err = err;
 		goto fail;
 	}
@@ -4018,7 +4018,7 @@ static uint8_t unicast_client_pacs_avail_ctx_read_func(struct bt_conn *conn, uin
 
 	LOG_DBG("conn %p err 0x%02x len %u", conn, err, length);
 
-	if (err || data == NULL || length != sizeof(context)) {
+	if (err != 0 || data == NULL || length != sizeof(context)) {
 		LOG_DBG("Could not read available context: %d, %p, %u", err, data, length);
 
 		if (err == BT_ATT_ERR_SUCCESS) {
@@ -4197,7 +4197,7 @@ static uint8_t unicast_client_pacs_location_read_func(struct bt_conn *conn, uint
 
 	LOG_DBG("conn %p err 0x%02x len %u", conn, err, length);
 
-	if (err || data == NULL || length != sizeof(location)) {
+	if (err != 0 || data == NULL || length != sizeof(location)) {
 		LOG_DBG("Unable to read PACS location for dir %s: %u, %p, %u",
 			bt_audio_dir_str(client->dir), err, data, length);
 
@@ -4426,7 +4426,7 @@ static uint8_t unicast_client_pacs_supp_context_read_func(struct bt_conn *conn, 
 
 	LOG_DBG("conn %p err 0x%02x len %u", conn, err, length);
 
-	if (err || data == NULL || length != sizeof(context)) {
+	if (err != 0 || data == NULL || length != sizeof(context)) {
 		LOG_DBG("Could not read supported context: %d, %p, %u", err, data, length);
 
 		if (err == BT_ATT_ERR_SUCCESS) {
