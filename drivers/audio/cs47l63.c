@@ -199,8 +199,11 @@ LOG_MODULE_REGISTER(cs47l63, CONFIG_AUDIO_CODEC_LOG_LEVEL);
 /* Number of DMA blocks in the I2S memory slab (double-buffering + headroom). */
 #define CS47L63_TX_SLAB_BLOCKS          4U
 
-/* TX thread stack size. */
-#define CS47L63_TX_STACK_SIZE           1024U
+/* TX thread stack size (bytes). */
+#define CS47L63_TX_STACK_SIZE CONFIG_AUDIO_CODEC_CS47L63_TX_STACK_SIZE
+
+/* I2S write timeout in milliseconds. */
+#define CS47L63_I2S_TIMEOUT_MS          2000
 
 /* -----------------------------------------------------------------------
  * Driver structures
@@ -629,13 +632,18 @@ static int cs47l63_configure(const struct device *dev,
 	 */
 	i2s_cfg.word_size      = pcm->pcm_width;
 	i2s_cfg.channels       = 2U;
+	/*
+	 * I2S format: both the nRF5340 I2S peripheral and the CS47L63 AIF1
+	 * are configured for standard I2S framing.  The codec register value
+	 * CS47L63_AIF_FMT_I2S (line ~557) must remain in sync with this.
+	 */
 	i2s_cfg.format         = I2S_FMT_DATA_FORMAT_I2S;
 	i2s_cfg.options        = I2S_OPT_FRAME_CLK_CONTROLLER |
 				  I2S_OPT_BIT_CLK_CONTROLLER;
 	i2s_cfg.frame_clk_freq = (uint32_t)pcm->samplerate;
 	i2s_cfg.mem_slab       = &data->tx_slab;
 	i2s_cfg.block_size     = CS47L63_I2S_BLOCK_SIZE;
-	i2s_cfg.timeout        = 2000; /* ms — enough for worst-case DMA wait */
+	i2s_cfg.timeout        = CS47L63_I2S_TIMEOUT_MS;
 
 	ret = i2s_configure(cfg->i2s_dev, I2S_DIR_TX, &i2s_cfg);
 	if (ret != 0) {
@@ -677,12 +685,9 @@ static int cs47l63_start(const struct device *dev, audio_dai_dir_t dir)
 
 	data->running = true;
 
-	k_thread_create(&data->tx_thread,
-			cfg->tx_stack, CS47L63_TX_STACK_SIZE,
-			cs47l63_tx_thread_fn,
-			(void *)dev, NULL, NULL,
-			CONFIG_AUDIO_CS47L63_TX_THREAD_PRIORITY,
-			0U, K_NO_WAIT);
+	k_thread_create(&data->tx_thread, cfg->tx_stack, CS47L63_TX_STACK_SIZE,
+			cs47l63_tx_thread_fn, (void *)dev, NULL, NULL,
+			CONFIG_AUDIO_CODEC_CS47L63_TX_THREAD_PRIORITY, 0U, K_NO_WAIT);
 	k_thread_name_set(&data->tx_thread, "cs47l63_tx");
 
 	return 0;

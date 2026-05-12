@@ -67,6 +67,7 @@
 	};
 
 	aliases {
+		codec0 = &cs47l63;
 		pwm-led0 = &rgb1_red_pwm_led;
 		pwm-led1 = &rgb1_green_pwm_led;
 		pwm-led2 = &rgb1_blue_pwm_led;
@@ -237,7 +238,6 @@ arduino_spi: &spi4 {
 		irq-gpios = <&gpio0 19 GPIO_ACTIVE_LOW>;
 		reset-gpios = <&gpio0 18 GPIO_ACTIVE_LOW>;
 		gpio9-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
-		i2s-bus = <&i2s0>;
 	};
 };
 

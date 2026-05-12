@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-config AUDIO_CS47L63
+config AUDIO_CODEC_CS47L63
 	bool "Cirrus Logic CS47L63 Audio DSP driver"
 	default y
 	depends on DT_HAS_CIRRUS_CS47L63_ENABLED
@@ -18,9 +18,9 @@ config AUDIO_CS47L63
 	  (register access) is performed over SPI, while audio data is
 	  streamed via an I2S peripheral on the host SoC.
 
-if AUDIO_CS47L63
+if AUDIO_CODEC_CS47L63
 
-config AUDIO_CS47L63_TX_THREAD_PRIORITY
+config AUDIO_CODEC_CS47L63_TX_THREAD_PRIORITY
 	int "CS47L63 TX streaming thread priority"
 	default 5
 	help
@@ -28,4 +28,12 @@ config AUDIO_CS47L63_TX_THREAD_PRIORITY
 	  numeric value means lower priority.  This thread must run often
 	  enough to keep up with the audio data rate.
 
-endif # AUDIO_CS47L63
+config AUDIO_CODEC_CS47L63_TX_STACK_SIZE
+	int "CS47L63 TX streaming thread stack size (bytes)"
+	default 1024
+	help
+	  Stack size in bytes for the background TX thread that feeds I2S
+	  DMA buffers.  Increase if the tx_done callback performs complex
+	  processing that requires a deeper stack.
+
+endif # AUDIO_CODEC_CS47L63

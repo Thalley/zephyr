@@ -4,8 +4,4 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/ {
-	aliases {
-		codec0 = &cs47l63;
-	};
-};
+#include "../app.overlay"
