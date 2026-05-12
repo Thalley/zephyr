@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config AUDIO_CS47L63
+	bool "Cirrus Logic CS47L63 Audio DSP driver"
+	default y
+	depends on DT_HAS_CIRRUS_CS47L63_ENABLED
+	depends on SPI
+	depends on I2S
+	depends on GPIO
+	help
+	  Enable driver support for the Cirrus Logic CS47L63 Low-Power Audio
+	  DSP.  The CS47L63 is a member of the Madera codec family.  It is
+	  used on the nRF5340 Audio Development Kit as the hardware audio
+	  codec.
+
+	  The driver implements the Zephyr audio_codec API.  Control
+	  (register access) is performed over SPI, while audio data is
+	  streamed via an I2S peripheral on the host SoC.
+
+if AUDIO_CS47L63
+
+config AUDIO_CS47L63_TX_THREAD_PRIORITY
+	int "CS47L63 TX streaming thread priority"
+	default 5
+	help
+	  Priority of the thread that feeds I2S DMA buffers.  A higher
+	  numeric value means lower priority.  This thread must run often
+	  enough to keep up with the audio data rate.
+
+endif # AUDIO_CS47L63
