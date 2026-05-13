@@ -210,22 +210,23 @@ LOG_MODULE_REGISTER(cs47l63, CONFIG_AUDIO_CODEC_LOG_LEVEL);
  * ----------------------------------------------------------------------- */
 
 struct cs47l63_config {
-	struct spi_dt_spec  spi;
+	struct spi_dt_spec spi;
 	struct gpio_dt_spec reset_gpio;
+	struct gpio_dt_spec gpio9_gpio;
 	const struct device *i2s_dev;
-	k_thread_stack_t    *tx_stack;
+	k_thread_stack_t *tx_stack;
 };
 
 struct cs47l63_data {
 	/* TX-done callback registered by the application */
 	audio_codec_tx_done_callback_t tx_done_cb;
-	void                          *tx_done_user_data;
+	void *tx_done_user_data;
 
 	/* PCM parameters saved during configure() */
 	uint32_t sample_rate;
-	uint8_t  channels;
-	uint8_t  word_size;
-	size_t   block_size;
+	uint8_t channels;
+	uint8_t word_size;
+	size_t block_size;
 
 	/* I2S memory slab (statically sized; large enough for 16-bit stereo) */
 	struct k_mem_slab tx_slab;
@@ -240,10 +241,10 @@ struct cs47l63_data {
 
 	/* TX streaming thread handle */
 	struct k_thread tx_thread;
-	volatile bool   running;
+	volatile bool running;
 
 	/* Cached properties */
-	int  cached_vol; /* 0–100 */
+	int cached_vol; /* 0–100 */
 	bool muted;
 };
 
@@ -837,6 +838,20 @@ static int cs47l63_init(const struct device *dev)
 		return ret;
 	}
 
+	/*
+	 * GPIO9 is an optional strap/control input on CS47L63 used on
+	 * nRF5340 Audio DK designs. Drive it to the inactive state before
+	 * reset release when present.
+	 */
+	if (cfg->gpio9_gpio.port != NULL) {
+		ret = gpio_pin_configure_dt(&cfg->gpio9_gpio,
+					    GPIO_OUTPUT_INACTIVE);
+		if (ret != 0) {
+			LOG_ERR("GPIO9 configure failed: %d", ret);
+			return ret;
+		}
+	}
+
 	/* Hardware reset: assert (active-low), wait, then deassert. */
 	if (cfg->reset_gpio.port != NULL) {
 		ret = gpio_pin_configure_dt(&cfg->reset_gpio,
@@ -893,6 +908,8 @@ static int cs47l63_init(const struct device *dev)
 			inst,                                               \
 			SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB |             \
 			SPI_WORD_SET(8U)),                                  \
+		.gpio9_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, gpio9_gpios,   \
+						       {0}),                \
 		.reset_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, reset_gpios,   \
 						       {0}),                \
 		.i2s_dev    = DEVICE_DT_GET(DT_INST_PHANDLE(inst, i2s_bus)), \
