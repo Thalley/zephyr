@@ -621,6 +621,17 @@ static bool codec_cfg_and_data_eq(const struct bt_audio_codec_cfg *a,
 	 * the only way to update them in BAP is to perform a new codec configuration, so we need to
 	 * consider them here too.
 	 */
+
+	LOG_ERR("a->path_id %u b->path_id %u", a->path_id, b->path_id);
+	LOG_ERR("a->ctlr_transcode %u b->ctlr_transcode %u", a->ctlr_transcode, b->ctlr_transcode);
+	LOG_ERR("a->target_latency %u b->target_latency %u", a->target_latency, b->target_latency);
+	LOG_ERR("a->target_phy %u b->target_phy %u", a->target_phy, b->target_phy);
+	LOG_ERR("a->id %u b->id %u", a->id, b->id);
+	LOG_ERR("a->cid %u b->cid %u", a->cid, b->cid);
+	LOG_ERR("a->cid %u b->cid %u", a->cid, b->cid);
+	LOG_HEXDUMP_ERR(a->data, a->data_len, "A data");
+	LOG_HEXDUMP_ERR(b->data, b->data_len, "B data");
+
 	return a->path_id == b->path_id && a->ctlr_transcode == b->ctlr_transcode &&
 	       a->target_latency == b->target_latency && a->target_phy == b->target_phy &&
 	       a->id == b->id && a->cid == b->cid && a->vid == b->vid &&

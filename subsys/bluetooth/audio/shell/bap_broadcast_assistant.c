@@ -130,10 +130,10 @@ static void bap_broadcast_assistant_scan_cb(const struct bt_le_scan_recv_info *i
 					    uint32_t broadcast_id)
 {
 	bt_shell_print(
-		"[DEVICE]: %s, broadcast_id 0x%06X, interval (ms) %u (0x%04x)), SID 0x%x, RSSI %i",
+		"[DEVICE]: %s, broadcast_id 0x%06X interval (ms) %u (0x%04x)), SID 0x%x, RSSI %i",
 		bt_addr_le_str(info->addr), broadcast_id,
-		BT_GAP_PER_ADV_INTERVAL_TO_MS(info->interval),
-		info->interval, info->sid, info->rssi);
+		BT_GAP_PER_ADV_INTERVAL_TO_MS(info->interval), info->interval, info->sid,
+		info->rssi);
 }
 
 static bool metadata_entry(struct bt_data *data, void *user_data)
@@ -166,7 +166,7 @@ static void bap_broadcast_assistant_recv_state_cb(
 
 	is_bad_code = state->encrypt_state == BT_BAP_BIG_ENC_STATE_BAD_CODE;
 	bt_shell_print(
-		"BASS recv state: src_id %u, addr %s, sid %u, broadcast_id 0x%06X, sync_state "
+		"BASS recv state: src_id %u, addr %s, sid %u, broadcast_id 0x%06X sync_state "
 		"%u, encrypt_state %u%s%s",
 		state->src_id, bt_addr_le_str(&state->addr), state->adv_sid, state->broadcast_id,
 		state->pa_sync_state, state->encrypt_state, is_bad_code ? ", bad code" : "",
@@ -500,36 +500,11 @@ static int cmd_bap_broadcast_assistant_add_src(const struct shell *sh,
 
 	param.broadcast_id = broadcast_id;
 
-	if (argc > 6) {
-		unsigned long pa_interval;
-
-		pa_interval = shell_strtoul(argv[6], 0, &result);
-		if (result) {
-			shell_error(sh, "Could not parse pa_interval: %d",
-				    result);
-
-			return -ENOEXEC;
-		}
-
-		if (!IN_RANGE(pa_interval,
-			      BT_GAP_PER_ADV_MIN_INTERVAL,
-			      BT_GAP_PER_ADV_MAX_INTERVAL)) {
-			shell_error(sh, "Invalid pa_interval: %lu",
-				    pa_interval);
-
-			return -ENOEXEC;
-		}
-
-		param.pa_interval = pa_interval;
-	} else {
-		param.pa_interval = BT_BAP_PA_INTERVAL_UNKNOWN;
-	}
-
 	/* TODO: Support multiple subgroups */
-	if (argc > 7) {
+	if (argc > 6) {
 		unsigned long bis_sync;
 
-		bis_sync = shell_strtoul(argv[7], 0, &result);
+		bis_sync = shell_strtoul(argv[6], 0, &result);
 		if (result) {
 			shell_error(sh, "Could not parse bis_sync: %d", result);
 
@@ -543,6 +518,28 @@ static int cmd_bap_broadcast_assistant_add_src(const struct shell *sh,
 		}
 
 		subgroup.bis_sync = bis_sync;
+	}
+
+	if (argc > 7) {
+		unsigned long pa_interval;
+
+		pa_interval = shell_strtoul(argv[7], 0, &result);
+		if (result) {
+			shell_error(sh, "Could not parse pa_interval: %d", result);
+
+			return -ENOEXEC;
+		}
+
+		if (!IN_RANGE(pa_interval, BT_GAP_PER_ADV_MIN_INTERVAL,
+			      BT_GAP_PER_ADV_MAX_INTERVAL)) {
+			shell_error(sh, "Invalid pa_interval: %lu", pa_interval);
+
+			return -ENOEXEC;
+		}
+
+		param.pa_interval = pa_interval;
+	} else {
+		param.pa_interval = BT_BAP_PA_INTERVAL_UNKNOWN;
 	}
 
 	if (argc > 8) {
@@ -652,9 +649,8 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info,
 		}
 
 		if (identified_broadcast) {
-			bt_shell_print(
-				"Found BAP broadcast source with address %s and ID 0x%06X\n",
-				bt_addr_le_str(info->addr), sr_info.broadcast_id);
+			bt_shell_print("Found BAP broadcast source with address %s and ID 0x%06X",
+				       bt_addr_le_str(info->addr), sr_info.broadcast_id);
 
 			err = bt_le_scan_stop();
 			if (err != 0) {
@@ -1265,7 +1261,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD_ARG(add_src, NULL,
 		      "Add a source <address: XX:XX:XX:XX:XX:XX> "
 		      "<type: public/random> <adv_sid> <sync_pa> "
-		      "<broadcast_id> [<pa_interval>] [<sync_bis>] "
+		      "<broadcast_id> [<sync_bis>] [<pa_interval>]"
 		      "[<metadata>]",
 		      cmd_bap_broadcast_assistant_add_src, 6, 3),
 	SHELL_CMD_ARG(add_broadcast_id, NULL,

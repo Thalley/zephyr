@@ -884,7 +884,7 @@ int bt_pacs_register(const struct bt_pacs_register_param *param)
 
 	err = bt_gatt_service_register(&pacs_svc);
 	if (err != 0) {
-		LOG_DBG("Failed to register ASCS in gatt DB: %d", err);
+		LOG_DBG("Failed to register PACS in gatt DB: %d", err);
 		atomic_clear_bit(pacs.flags, PACS_FLAG_REGISTERED);
 
 		return -ENOEXEC;
@@ -1438,6 +1438,7 @@ int bt_pacs_cap_register(enum bt_audio_dir dir, struct bt_pacs_cap *cap)
 	sys_slist_t *pac;
 
 	if (!cap || !cap->codec_cap) {
+		LOG_DBG("%d", __LINE__);
 		return -EINVAL;
 	}
 

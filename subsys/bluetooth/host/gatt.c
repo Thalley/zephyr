@@ -3381,6 +3381,10 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
 	uint8_t ccc_bits_encoded[sizeof(ccc_bits)];
 	ssize_t len;
 
+	if (conn == NULL || attr == NULL) {
+		return false;
+	}
+
 	__ASSERT(conn, "invalid parameter\n");
 	__ASSERT(attr, "invalid parameter\n");
 

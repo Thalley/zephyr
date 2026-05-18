@@ -682,7 +682,7 @@ static struct bass_recv_state_internal *bass_lookup_state(uint8_t addr_type, uin
 		err = k_mutex_lock(&recv_state_internal->mutex, SCAN_DELEGATOR_BUF_SEM_TIMEOUT);
 		__ASSERT(err == 0, "Failed to lock mutex: %d", err);
 
-		if (recv_state_internal->state.addr.type == addr_type &&
+		if ((recv_state_internal->state.addr.type == addr_type || true) &&
 		    recv_state_internal->state.adv_sid == adv_sid &&
 		    recv_state_internal->state.broadcast_id == broadcast_id) {
 			res = recv_state_internal;
@@ -1274,15 +1274,18 @@ static int scan_delegator_mod_src(struct bt_conn *conn,
 		/* Terminate PA sync */
 		err = pa_sync_term_request(conn, &internal_state->state);
 		if (err != 0) {
-			err = k_mutex_lock(&internal_state->mutex, SCAN_DELEGATOR_BUF_SEM_TIMEOUT);
-			__ASSERT(err == 0, "Failed to lock mutex: %d", err);
+			int mutex_err;
+
+			mutex_err = k_mutex_lock(&internal_state->mutex,
+						 SCAN_DELEGATOR_BUF_SEM_TIMEOUT);
+			__ASSERT(mutex_err == 0, "Failed to lock mutex: %d", err);
 
 			/* Restore backup */
 			(void)memcpy(state, &backup_state, sizeof(backup_state));
 			internal_state->pa_sync_requested = backup_pa_sync_requested;
 
-			err = k_mutex_unlock(&internal_state->mutex);
-			__ASSERT(err == 0, "Failed to unlock mutex: %d", err);
+			mutex_err = k_mutex_unlock(&internal_state->mutex);
+			__ASSERT(mutex_err == 0, "Failed to unlock mutex: %d", err);
 
 			LOG_DBG("PA sync term from %p was rejected with reason %d", (void *)conn,
 				err);

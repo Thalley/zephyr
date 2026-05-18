@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include <zephyr/autoconf.h>
+#include <zephyr/bluetooth/assigned_numbers.h>
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -139,9 +140,9 @@ static void usb_data_request(const struct device *dev)
 	} else {
 		static size_t cnt;
 
-		if ((++cnt % bap_get_stats_interval()) == 0U) {
-			LOG_INF("[%zu]: Sending empty USB audio", cnt);
-		}
+		cnt++;
+
+		LOG_INF_RATELIMIT_RATE(30000, "[%zu]: Sending empty USB audio", cnt);
 	}
 
 	err = usbd_uac2_send(dev, IN_TERMINAL_ID, pcm_buf, USB_STEREO_FRAME_SIZE);
@@ -282,7 +283,12 @@ int bap_usb_add_frame_to_usb(enum bt_audio_location chan_allocation, const int16
 	if (((is_left || is_right) && decoded_sdu.mono_frames_cnt != 0) ||
 	    (is_mono &&
 	     (decoded_sdu.left_frames_cnt != 0U || decoded_sdu.right_frames_cnt != 0U))) {
-		LOG_DBG("Cannot mix and match mono with left or right");
+		LOG_WRN("Cannot mix and match mono with left or right: %s: %u | %u | %u",
+			is_left    ? "is_left"
+			: is_right ? "is_right"
+				   : "is_mono",
+			decoded_sdu.mono_frames_cnt, decoded_sdu.left_frames_cnt,
+			decoded_sdu.right_frames_cnt);
 
 		return -EINVAL;
 	}
@@ -496,9 +502,8 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 	 */
 	bap_foreach_stream(stream_cb, UINT_TO_POINTER(old_write_index));
 
-	if ((++cnt % bap_get_stats_interval()) == 0U) {
-		LOG_DBG("USB Data received (count = %d)", cnt);
-	}
+	cnt++;
+	LOG_DBG_RATELIMIT_RATE(30000, "USB Data received (count = %d)", cnt);
 
 	k_mem_slab_free(&usb_out_buf_pool, buf);
 }

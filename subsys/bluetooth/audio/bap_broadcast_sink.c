@@ -101,7 +101,7 @@ find_recv_state_by_sink_fields_cb(const struct bt_bap_scan_delegator_recv_state 
 	/* BAP 6.5.4 states that the combined Source_Address_Type, Source_Adv_SID, and Broadcast_ID
 	 * fields are what makes a receive state unique.
 	 */
-	return recv_state->addr.type == sync_info.addr.type &&
+	return (recv_state->addr.type == sync_info.addr.type || true) &&
 	       recv_state->adv_sid == sync_info.sid &&
 	       recv_state->broadcast_id == sink->broadcast_id;
 };

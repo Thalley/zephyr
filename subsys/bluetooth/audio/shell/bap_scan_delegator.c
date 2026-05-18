@@ -30,12 +30,14 @@
 #include <zephyr/shell/shell_string_conv.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/util_macro.h>
 #include <zephyr/toolchain.h>
 #include <zephyr/types.h>
 
 #include <audio/bap_internal.h>
 #include "audio.h"
 #include "common/bt_shell_private.h"
+#include "common/bt_str.h"
 #include "host/shell/bt.h"
 
 #define PA_SYNC_INTERVAL_TO_TIMEOUT_RATIO 20 /* Set the timeout relative to interval */
@@ -103,7 +105,7 @@ sync_state_get_or_new(const struct bt_bap_scan_delegator_recv_state *recv_state)
 			/* If the broadcast ID and the PA sync's address type and SID matches, it is
 			 * a match to an existing sync_state
 			 */
-			if (recv_state->addr.type == sync_info.addr.type &&
+			if ((recv_state->addr.type == sync_info.addr.type || true) &&
 			    recv_state->adv_sid == sync_info.sid) {
 				return &scan_delegator_sync_states[i];
 			}
@@ -135,7 +137,7 @@ scan_delegator_sync_state_get_by_values(uint32_t broadcast_id, uint8_t addr_type
 		if (scan_delegator_sync_states[i].active &&
 		    scan_delegator_sync_states[i].recv_state != NULL &&
 		    scan_delegator_sync_states[i].recv_state->broadcast_id == broadcast_id &&
-		    scan_delegator_sync_states[i].recv_state->addr.type == addr_type &&
+		    (scan_delegator_sync_states[i].recv_state->addr.type == addr_type || true) &&
 		    scan_delegator_sync_states[i].recv_state->adv_sid == sid) {
 			return &scan_delegator_sync_states[i];
 		}
@@ -332,9 +334,8 @@ static int pa_sync_req_cb(struct bt_conn *conn,
 {
 	struct scan_delegator_sync_state *state;
 
-	bt_shell_info(
-		"PA Sync request: past_avail %u, broadcast_id 0x%06X, pa_interval 0x%04x: %p",
-		past_avail, recv_state->broadcast_id, pa_interval, recv_state);
+	bt_shell_info("PA Sync request: past_avail %u, broadcast_id 0x%06X pa_interval 0x%04x: %p",
+		      past_avail, recv_state->broadcast_id, pa_interval, recv_state);
 
 	state = sync_state_get_or_new(recv_state);
 	if (state == NULL) {
@@ -343,10 +344,6 @@ static int pa_sync_req_cb(struct bt_conn *conn,
 		return -1;
 	}
 
-	state->recv_state = recv_state;
-	state->src_id = recv_state->src_id;
-	state->broadcast_id = recv_state->broadcast_id;
-
 	if (recv_state->pa_sync_state == BT_BAP_PA_STATE_SYNCED ||
 	    recv_state->pa_sync_state == BT_BAP_PA_STATE_INFO_REQ) {
 		/* Already syncing */
@@ -354,7 +351,22 @@ static int pa_sync_req_cb(struct bt_conn *conn,
 		return -1;
 	}
 
-	if (past_avail) {
+	if (IS_ENABLED(CONFIG_BT_BAP_BROADCAST_SINK)) {
+		const int err = bap_broadcast_sink_pa_sync_req(
+			recv_state->broadcast_id, recv_state->adv_sid, recv_state->addr.type);
+
+		if (err != 0) {
+			return err;
+		}
+
+		// TODO: If PAST is available use that
+	}
+
+	state->recv_state = recv_state;
+	state->src_id = recv_state->src_id;
+	state->broadcast_id = recv_state->broadcast_id;
+
+	if (past_avail && !IS_ENABLED(CONFIG_BT_BAP_BROADCAST_SINK)) {
 		state->past_avail = past_preference;
 		state->conn = bt_conn_ref(conn);
 	} else {
@@ -388,6 +400,7 @@ static void broadcast_code_cb(struct bt_conn *conn,
 			      const uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE])
 {
 	struct scan_delegator_sync_state *state;
+	int err;
 
 	ARG_UNUSED(conn);
 
@@ -402,18 +415,57 @@ static void broadcast_code_cb(struct bt_conn *conn,
 	}
 
 	(void)memcpy(state->broadcast_code, broadcast_code, BT_ISO_BROADCAST_CODE_SIZE);
+
+	err = bap_broadcast_sink_bis_sync_req(state->bis_sync_req_bitfield, state->broadcast_code);
+	if (err != 0) {
+		/* TODO: Why didn't this return a rejection? */
+		bt_shell_error("Failed to sync: %d", err);
+	}
 }
 
 static int bis_sync_req_cb(struct bt_conn *conn,
 			   const struct bt_bap_scan_delegator_recv_state *recv_state,
 			   const uint32_t bis_sync_req[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS])
 {
+	uint32_t bis_sync_req_bitfield = 0U;
 	ARG_UNUSED(conn);
 
 	bt_shell_print("BIS sync request received for %p", recv_state);
 
-	for (int i = 0; i < CONFIG_BT_BAP_BASS_MAX_SUBGROUPS; i++) {
+	for (uint8_t i = 0U; i < recv_state->num_subgroups; i++) {
 		bt_shell_print("  [%d]: 0x%08x", i, bis_sync_req[i]);
+
+		if (bis_sync_req[i] == BT_BAP_BIS_SYNC_NO_PREF) {
+			if (bis_sync_req_bitfield == 0) {
+				bis_sync_req_bitfield = BT_BAP_BIS_SYNC_NO_PREF;
+			} else if (bis_sync_req_bitfield == BT_BAP_BIS_SYNC_NO_PREF) {
+				/* no-op */
+			} else {
+				/* Invalid mix of BT_BAP_BIS_SYNC_NO_PREF and specific values */
+				return -EINVAL;
+			}
+		} else {
+			bis_sync_req_bitfield |= bis_sync_req[i];
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_BT_BAP_BROADCAST_SINK)) {
+		struct scan_delegator_sync_state *state;
+		int err;
+
+		state = sync_state_get(recv_state);
+		if (state == NULL) {
+			bt_shell_error("Could not get state from recv state %p", recv_state);
+
+			return -ENOENT;
+		}
+
+		state->bis_sync_req_bitfield = bis_sync_req_bitfield;
+		err = bap_broadcast_sink_bis_sync_req(bis_sync_req_bitfield, state->broadcast_code);
+		if (err != 0) {
+			/* TODO: Why didn't this return a rejection? */
+			return err;
+		}
 	}
 
 	return 0;
@@ -1079,12 +1131,44 @@ static int cmd_bap_scan_delegator_bis_synced(const struct shell *sh, size_t argc
 	return result;
 }
 
-static int cmd_bap_scan_delegator(const struct shell *sh, size_t argc,
-				  char **argv)
+static int cmd_bap_scan_delegator_print_recv_states(const struct shell *sh, size_t argc,
+						    char **argv)
+{
+	ARRAY_FOR_EACH(scan_delegator_sync_states, idx) {
+		struct scan_delegator_sync_state *sync_state = &scan_delegator_sync_states[idx];
+		const struct bt_bap_scan_delegator_recv_state *recv_state = sync_state->recv_state;
+
+		if (recv_state == NULL) {
+			continue;
+		}
+
+		shell_print(
+			sh,
+			"Receive State[%d]: src ID %u, addr %s, adv_sid %u, broadcast_id 0x%06X, "
+			"pa_sync_state %u, encrypt state %u, num_subgroups %u",
+			idx, recv_state->src_id, bt_addr_le_str(&recv_state->addr),
+			recv_state->adv_sid, recv_state->broadcast_id, recv_state->pa_sync_state,
+			recv_state->encrypt_state, recv_state->num_subgroups);
+
+		for (uint8_t i = 0U; i < recv_state->num_subgroups; i++) {
+			const struct bt_bap_bass_subgroup *subgroup = &recv_state->subgroups[i];
+
+			shell_print(sh,
+				    "\tSubgroup[%u]: BIS sync %u (requested %u), metadata_len %zu, "
+				    "metadata: %s",
+				    i, subgroup->bis_sync, sync_state->bis_sync_req_bitfield,
+				    subgroup->metadata_len,
+				    bt_hex(subgroup->metadata, subgroup->metadata_len));
+		}
+	}
+
+	return 0;
+}
+
+static int cmd_bap_scan_delegator(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc > 1) {
-		shell_error(sh, "%s unknown parameter: %s",
-			    argv[0], argv[1]);
+		shell_error(sh, "%s unknown parameter: %s", argv[0], argv[1]);
 	} else {
 		shell_error(sh, "%s Missing subcommand", argv[0]);
 	}
@@ -1092,19 +1176,15 @@ static int cmd_bap_scan_delegator(const struct shell *sh, size_t argc,
 	return -ENOEXEC;
 }
 
-SHELL_STATIC_SUBCMD_SET_CREATE(bap_scan_delegator_cmds,
-	SHELL_CMD_ARG(init, NULL,
-		      "Initialize the service and register callbacks",
+SHELL_STATIC_SUBCMD_SET_CREATE(
+	bap_scan_delegator_cmds,
+	SHELL_CMD_ARG(init, NULL, "Initialize the service and register callbacks",
 		      cmd_bap_scan_delegator_init, 1, 0),
-	SHELL_CMD_ARG(set_past_pref, NULL,
-		      "Set PAST preference <true || false>",
+	SHELL_CMD_ARG(set_past_pref, NULL, "Set PAST preference <true || false>",
 		      cmd_bap_scan_delegator_set_past_pref, 2, 0),
-	SHELL_CMD_ARG(sync_pa, NULL,
-		      "Sync to PA <src_id>",
-		      cmd_bap_scan_delegator_sync_pa, 2, 0),
-	SHELL_CMD_ARG(term_pa, NULL,
-		      "Terminate PA sync <src_id>",
-		      cmd_bap_scan_delegator_term_pa, 2, 0),
+	SHELL_CMD_ARG(sync_pa, NULL, "Sync to PA <src_id>", cmd_bap_scan_delegator_sync_pa, 2, 0),
+	SHELL_CMD_ARG(term_pa, NULL, "Terminate PA sync <src_id>", cmd_bap_scan_delegator_term_pa,
+		      2, 0),
 	SHELL_CMD_ARG(add_src, NULL,
 		      "Add a PA as source <addr> <sid> <broadcast_id> <enc_state> "
 		      "[bis_sync [metadata]]",
@@ -1115,15 +1195,13 @@ SHELL_STATIC_SUBCMD_SET_CREATE(bap_scan_delegator_cmds,
 	SHELL_CMD_ARG(mod_src, NULL,
 		      "Modify source <src_id> <broadcast_id> <enc_state> [bis_sync [metadata]]",
 		      cmd_bap_scan_delegator_mod_src, 4, 2),
-	SHELL_CMD_ARG(rem_src, NULL,
-		      "Remove source <src_id>",
-		      cmd_bap_scan_delegator_rem_src, 2, 0),
-	SHELL_CMD_ARG(synced, NULL,
-		      "Set server scan state <src_id> <bis_syncs>",
+	SHELL_CMD_ARG(rem_src, NULL, "Remove source <src_id>", cmd_bap_scan_delegator_rem_src, 2,
+		      0),
+	SHELL_CMD_ARG(synced, NULL, "Set server scan state <src_id> <bis_syncs>",
 		      cmd_bap_scan_delegator_bis_synced, 3, 0),
-	SHELL_SUBCMD_SET_END,
-);
+	SHELL_CMD_ARG(print_recv_states, NULL, "Print all data from receive states",
+		      cmd_bap_scan_delegator_print_recv_states, 1, 0),
+	SHELL_SUBCMD_SET_END, );
 
 SHELL_CMD_ARG_REGISTER(bap_scan_delegator, &bap_scan_delegator_cmds,
-		       "Bluetooth BAP scan delegator shell commands",
-		       cmd_bap_scan_delegator, 1, 1);
+		       "Bluetooth BAP scan delegator shell commands", cmd_bap_scan_delegator, 1, 1);

@@ -3113,6 +3113,9 @@ int bt_ascs_register(uint8_t snk_cnt, uint8_t src_cnt)
 
 static int control_point_notify(struct bt_conn *conn, const void *data, uint16_t len)
 {
+	// We cannot rely on this sending the notification before the ASE state change. Use the
+	// notify cb to trigger state changes
+
 	return bt_gatt_notify_uuid(conn, BT_UUID_ASCS_ASE_CP, ascs_svc.attrs, data, len);
 }
 

@@ -714,9 +714,9 @@ static int cap_ac_unicast_start(const struct cap_unicast_ac_param *param,
 	return bt_cap_initiator_unicast_audio_start(&cap_initiator_unicast_audio_start_param);
 }
 
-static int set_codec_config(const struct shell *sh, struct shell_stream *sh_stream,
-			    struct named_lc3_preset *preset, size_t conn_cnt, size_t ep_cnt,
-			    size_t chan_cnt, size_t conn_index, size_t ep_index)
+static int set_unicast_codec_config(const struct shell *sh, struct shell_stream *sh_stream,
+				    struct named_lc3_preset *preset, size_t conn_cnt, size_t ep_cnt,
+				    size_t chan_cnt, size_t conn_index, size_t ep_index)
 {
 	enum bt_audio_location new_chan_alloc;
 	enum bt_audio_location chan_alloc;
@@ -731,9 +731,13 @@ static int set_codec_config(const struct shell *sh, struct shell_stream *sh_stre
 		 * - When we have multiple channels streams for a connection, we make them either
 		 *   left or right, regardless of the connection count
 		 */
+		/* Do we enter this for ac_3 and ac_7??? */
+		// We should use the location of the devices instead of assuming that index 0 = left
 		if (ep_cnt == 1) {
 			if (conn_cnt == 1) {
-				new_chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
+				// new_chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
+
+				return 0;
 			} else if (conn_cnt == 2) {
 				if (conn_index == 0) {
 					new_chan_alloc = BT_AUDIO_LOCATION_FRONT_LEFT;
@@ -772,6 +776,7 @@ static int set_codec_config(const struct shell *sh, struct shell_stream *sh_stre
 	err = bt_audio_codec_cfg_get_chan_allocation(&sh_stream->codec_cfg, &chan_alloc, false);
 	if (err != 0) {
 		if (err == -ENODATA) {
+			shell_info(sh, "Could not get channel allocation, defaulting to mono");
 			chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
 		}
 	}
@@ -942,15 +947,16 @@ int cap_ac_unicast(const struct shell *sh, const struct cap_unicast_ac_param *pa
 	/* Set all endpoints from multiple connections in a single array, and verify that the known
 	 * endpoints matches the audio configuration
 	 */
+	total_cnt = 0U;
 	for (size_t i = 0U; i < param->conn_cnt; i++) {
 		for (size_t j = 0U; j < param->snk_cnt[i]; j++) {
 			struct shell_stream *snk_uni_stream;
 
-			snk_uni_stream = snk_uni_streams[snk_cnt] = &unicast_streams[snk_cnt];
+			snk_uni_stream = snk_uni_streams[snk_cnt] = &unicast_streams[total_cnt];
 
-			err = set_codec_config(sh, snk_uni_stream, &default_sink_preset,
-					       param->conn_cnt, param->snk_cnt[i],
-					       param->snk_chan_cnt, i, j);
+			err = set_unicast_codec_config(sh, snk_uni_stream, &default_sink_preset,
+						       param->conn_cnt, param->snk_cnt[i],
+						       param->snk_chan_cnt, i, j);
 			if (err != 0) {
 				shell_error(sh, "Failed to set codec configuration: %d", err);
 
@@ -958,17 +964,17 @@ int cap_ac_unicast(const struct shell *sh, const struct cap_unicast_ac_param *pa
 			}
 
 			snk_cnt++;
+			total_cnt++;
 		}
 
 		for (size_t j = 0U; j < param->src_cnt[i]; j++) {
 			struct shell_stream *src_uni_stream;
 
-			src_uni_stream = src_uni_streams[src_cnt] =
-				&unicast_streams[snk_cnt + src_cnt];
+			src_uni_stream = src_uni_streams[src_cnt] = &unicast_streams[total_cnt];
 
-			err = set_codec_config(sh, src_uni_stream, &default_source_preset,
-					       param->conn_cnt, param->src_cnt[i],
-					       param->src_chan_cnt, i, j);
+			err = set_unicast_codec_config(sh, src_uni_stream, &default_source_preset,
+						       param->conn_cnt, param->src_cnt[i],
+						       param->src_chan_cnt, i, j);
 			if (err != 0) {
 				shell_error(sh, "Failed to set codec configuration: %d", err);
 
@@ -976,6 +982,7 @@ int cap_ac_unicast(const struct shell *sh, const struct cap_unicast_ac_param *pa
 			}
 
 			src_cnt++;
+			total_cnt++;
 		}
 	}
 
@@ -1002,6 +1009,23 @@ int cap_ac_unicast(const struct shell *sh, const struct cap_unicast_ac_param *pa
 		}
 
 		return -ENOEXEC;
+	}
+
+	return 0;
+}
+
+static int cmd_cap_unicast_group_delete(const struct shell *sh, size_t argc, char **argv)
+{
+	int err;
+
+	err = bt_cap_unicast_group_delete(default_unicast_group.cap_group);
+	if (err != 0) {
+		shell_error(sh, "Failed to delete group: %d", err);
+		return -ENOEXEC;
+	} else {
+		default_unicast_group.cap_group = NULL;
+		default_unicast_group.is_cap = false;
+		shell_info(sh, "Unicast group deleted");
 	}
 
 	return 0;
@@ -1467,6 +1491,58 @@ static int cmd_broadcast_delete(const struct shell *sh, size_t argc, char *argv[
 	return 0;
 }
 
+static int set_broadcast_codec_config(const struct shell *sh, struct broadcast_source *source,
+				      struct named_lc3_preset *preset, size_t chan_cnt)
+{
+	enum bt_audio_location new_chan_alloc;
+	enum bt_audio_location chan_alloc;
+	int err;
+
+	copy_broadcast_source_preset(source, preset);
+
+	shell_error(sh, "chan_cnt %zu", chan_cnt);
+	if (chan_cnt == 1U) {
+		new_chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
+	} else if (chan_cnt == 2U) {
+		/* Some audio configuration requires multiple channels,
+		 * so multiply the SDU based on the channel count
+		 */
+		source->qos.sdu *= chan_cnt;
+
+		/* If a stream has 2 channels, we make it stereo */
+		new_chan_alloc = BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT;
+	} else {
+		shell_warn(sh, "Could not set chan alloc for chan_cnt %zu", chan_cnt);
+		return 0;
+	}
+
+	err = bt_audio_codec_cfg_get_chan_allocation(&source->codec_cfg, &chan_alloc, false);
+	if (err != 0) {
+		if (err == -ENODATA) {
+			shell_info(
+				sh,
+				"Could not get broadcast channel allocation, defaulting to mono");
+			chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
+		}
+	}
+
+	shell_error(sh, "chan_alloc %u", chan_alloc);
+	shell_error(sh, "new_chan_alloc %u", new_chan_alloc);
+
+	if (chan_alloc != new_chan_alloc) {
+		shell_info(sh,
+			   "Overwriting existing broadcast channel allocation 0x%08X with 0x%08X",
+			   chan_alloc, new_chan_alloc);
+
+		err = bt_audio_codec_cfg_set_chan_allocation(&source->codec_cfg, new_chan_alloc);
+		if (err < 0) {
+			return err;
+		}
+	}
+
+	return 0;
+}
+
 int cap_ac_broadcast(const struct shell *sh, size_t argc, char **argv,
 		     const struct bap_broadcast_ac_param *param)
 {
@@ -1515,10 +1591,10 @@ int cap_ac_broadcast(const struct shell *sh, size_t argc, char **argv,
 		return -ENOEXEC;
 	}
 
-	shell_print(sh, "Generated broadcast_id 0x%06X", broadcast_id);
+	shell_info(sh, "Generated broadcast_id 0x%06X", broadcast_id);
 
-	copy_broadcast_source_preset(&default_source, &default_broadcast_source_preset);
-	default_source.qos.sdu *= param->chan_cnt;
+	set_broadcast_codec_config(sh, &default_source, &default_broadcast_source_preset,
+				   param->chan_cnt);
 
 	(void)memset(cap_initiator_broadcast_stream_params, 0,
 		     sizeof(cap_initiator_broadcast_stream_params));
@@ -1554,6 +1630,7 @@ int cap_ac_broadcast(const struct shell *sh, size_t argc, char **argv,
 		&cap_initiator_broadcast_subgroup_param;
 	cap_initiator_broadcast_create_param.qos = &default_source.qos;
 
+	// Is the source codec_cfg and QoS not being correctly copied to the streams???
 	err = bt_cap_initiator_broadcast_audio_create(&cap_initiator_broadcast_create_param,
 						      &default_source.cap_source);
 	if (err != 0) {
@@ -1643,6 +1720,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 		      cmd_cap_initiator_unicast_stop, 1, CAP_UNICAST_CLIENT_STREAM_COUNT),
 	SHELL_CMD_ARG(unicast_cancel, NULL, "Unicast cancel current procedure",
 		      cmd_cap_initiator_unicast_cancel, 1, 0),
+	SHELL_CMD_ARG(unicast_group_delete, NULL, "Delete unicast group",
+		      cmd_cap_unicast_group_delete, 1, 0),
 #if UNICAST_SINK_SUPPORTED
 	SHELL_CMD_ARG(ac_1, NULL, "Unicast audio configuration 1", cmd_cap_ac_1, 1, 0),
 #endif /* UNICAST_SINK_SUPPORTED */

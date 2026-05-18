@@ -41,8 +41,9 @@
 
 static void unicast_to_broadcast_created_cb(struct bt_cap_broadcast_source *broadcast_source)
 {
-	bt_shell_info("Broadcast source %p created. Execute \"bt per-adv-data\" to set the BASE",
-		      broadcast_source);
+	bt_shell_info("Broadcast source %p created for broadcast id 0x%06X ."
+		      "Execute \"bt per-adv-data\" to set the BASE",
+		      broadcast_source, default_source.broadcast_id);
 
 	if (default_source.cap_source == NULL) {
 		default_source.cap_source = broadcast_source;
@@ -346,7 +347,7 @@ static int cmd_cap_handover_unicast_to_broadcast(const struct shell *sh, size_t 
 		return -ENOEXEC;
 	}
 
-	shell_print(sh, "Generated broadcast_id 0x%06X", broadcast_id);
+	shell_info(sh, "Generated broadcast_id 0x%06X", broadcast_id);
 
 	copy_broadcast_source_preset(&default_source, named_preset);
 

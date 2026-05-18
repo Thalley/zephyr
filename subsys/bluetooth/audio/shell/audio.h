@@ -78,7 +78,7 @@ unsigned long bap_get_stats_interval(void);
 #define LC3_MAX_NUM_SAMPLES_STEREO (LC3_MAX_NUM_SAMPLES_MONO * 2U)
 #endif /* CONFIG_LIBLC3 */
 
-#define LOCATION BT_AUDIO_LOCATION_FRONT_LEFT
+#define DEFAULT_LOCATION (BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT)
 #define CONTEXT                                                                                    \
 	(BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED | BT_AUDIO_CONTEXT_TYPE_CONVERSATIONAL |                \
 	 BT_AUDIO_CONTEXT_TYPE_MEDIA |                                                             \
@@ -171,8 +171,13 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream);
 void bap_usb_get_frame(struct shell_stream *sh_stream, enum bt_audio_location chan_alloc,
 		       int16_t buffer[]);
 size_t bap_usb_get_frame_size(const struct shell_stream *sh_stream);
+
 void bap_broadcast_sink_foreach_stream(void (*func)(struct shell_stream *sh_stream, void *data),
 				       void *data);
+
+int bap_broadcast_sink_pa_sync_req(uint32_t broadcast_id, uint8_t sid, uint8_t addr_type);
+int bap_broadcast_sink_bis_sync_req(uint32_t bis_sync_req_bitfield,
+				    const uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE]);
 
 void bap_stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_info *info,
 			struct net_buf *buf);
@@ -196,9 +201,13 @@ struct broadcast_source {
 struct broadcast_sink {
 	struct bt_bap_broadcast_sink *bap_sink;
 	struct bt_le_per_adv_sync *pa_sync;
-	uint8_t received_base[UINT8_MAX];
+	uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE];
+	uint32_t bis_sync_req_bitfield;
+	uint8_t received_base[BT_BASE_MAX_SIZE];
 	uint8_t base_size;
 	bool syncable;
+	bool encrypted;
+	bool received_broadcast_code;
 };
 
 struct unicast_group {
@@ -228,11 +237,14 @@ struct scan_delegator_sync_state {
 	struct bt_conn *conn;
 	struct k_work_delayable pa_timer;
 	uint32_t broadcast_id;
+	uint32_t bis_sync_req_bitfield;
 	uint16_t pa_interval;
 	bool active;
 	bool pa_syncing;
 	bool past_avail;
 	uint8_t src_id;
+	/* add encrypt field and only call bap_broadcast_sink_bis_sync_req we have received the
+	 * code; request otherwise */
 };
 
 #define BAP_UNICAST_AC_MAX_CONN   2U

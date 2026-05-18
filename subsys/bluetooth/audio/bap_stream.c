@@ -958,7 +958,7 @@ static bool valid_snk_state_transition(enum bt_bap_ep_state old_state,
 	case BT_BAP_EP_STATE_RELEASING:
 		switch (new_state) {
 		case BT_BAP_EP_STATE_IDLE:
-		case BT_BAP_EP_STATE_QOS_CONFIGURED:
+		case BT_BAP_EP_STATE_CODEC_CONFIGURED:
 			valid_transition = true;
 			break;
 		default:
@@ -1056,7 +1056,7 @@ static bool valid_src_state_transition(enum bt_bap_ep_state old_state,
 	case BT_BAP_EP_STATE_RELEASING:
 		switch (new_state) {
 		case BT_BAP_EP_STATE_IDLE:
-		case BT_BAP_EP_STATE_QOS_CONFIGURED:
+		case BT_BAP_EP_STATE_CODEC_CONFIGURED:
 			valid_transition = true;
 			break;
 		default:
@@ -1526,6 +1526,8 @@ int bt_bap_stream_disable(struct bt_bap_stream *stream)
 		return -EINVAL;
 	}
 
+	// Missing bap_stream_valid_ase_op
+
 	state = stream->ep->state;
 	switch (state) {
 	/* Valid only if ASE_State field = 0x03 (Enabling) */
@@ -1568,7 +1570,15 @@ int bt_bap_stream_release(struct bt_bap_stream *stream)
 		return -EINVAL;
 	}
 
+	// Missing bap_stream_valid_ase_op
+
 	state = stream->ep->state;
+
+	if (state == BT_BAP_EP_STATE_IDLE) {
+		bt_bap_stream_reset(stream);
+		return 0;
+	}
+
 	switch (state) {
 	/* Valid only if ASE_State field = 0x01 (Codec Configured) */
 	case BT_BAP_EP_STATE_CODEC_CONFIGURED:

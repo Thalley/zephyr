@@ -46,7 +46,7 @@
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/clock.h>
-#include <zephyr/sys/printk.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/time_units.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/util_macro.h>
@@ -91,84 +91,84 @@ static struct bt_bap_stream *default_stream;
 
 #if IS_BAP_INITIATOR
 /* Default to 16_2_1 */
-struct named_lc3_preset default_sink_preset = {"16_2_1",
-					       BT_BAP_LC3_UNICAST_PRESET_16_2_1(LOCATION, CONTEXT)};
+struct named_lc3_preset default_sink_preset = {
+	"16_2_1", BT_BAP_LC3_UNICAST_PRESET_16_2_1(DEFAULT_LOCATION, CONTEXT)};
 struct named_lc3_preset default_source_preset = {
-	"16_2_1", BT_BAP_LC3_UNICAST_PRESET_16_2_1(LOCATION, CONTEXT)};
+	"16_2_1", BT_BAP_LC3_UNICAST_PRESET_16_2_1(DEFAULT_LOCATION, CONTEXT)};
 struct named_lc3_preset default_broadcast_source_preset = {
-	"16_2_1", BT_BAP_LC3_BROADCAST_PRESET_16_2_1(LOCATION, CONTEXT)};
+	"16_2_1", BT_BAP_LC3_BROADCAST_PRESET_16_2_1(DEFAULT_LOCATION, CONTEXT)};
 #endif /* IS_BAP_INITIATOR */
 
 static const struct named_lc3_preset lc3_unicast_presets[] = {
-	{"8_1_1", BT_BAP_LC3_UNICAST_PRESET_8_1_1(LOCATION, CONTEXT)},
-	{"8_2_1", BT_BAP_LC3_UNICAST_PRESET_8_2_1(LOCATION, CONTEXT)},
-	{"16_1_1", BT_BAP_LC3_UNICAST_PRESET_16_1_1(LOCATION, CONTEXT)},
-	{"16_2_1", BT_BAP_LC3_UNICAST_PRESET_16_2_1(LOCATION, CONTEXT)},
-	{"24_1_1", BT_BAP_LC3_UNICAST_PRESET_24_1_1(LOCATION, CONTEXT)},
-	{"24_2_1", BT_BAP_LC3_UNICAST_PRESET_24_2_1(LOCATION, CONTEXT)},
-	{"32_1_1", BT_BAP_LC3_UNICAST_PRESET_32_1_1(LOCATION, CONTEXT)},
-	{"32_2_1", BT_BAP_LC3_UNICAST_PRESET_32_2_1(LOCATION, CONTEXT)},
-	{"441_1_1", BT_BAP_LC3_UNICAST_PRESET_441_1_1(LOCATION, CONTEXT)},
-	{"441_2_1", BT_BAP_LC3_UNICAST_PRESET_441_2_1(LOCATION, CONTEXT)},
-	{"48_1_1", BT_BAP_LC3_UNICAST_PRESET_48_1_1(LOCATION, CONTEXT)},
-	{"48_2_1", BT_BAP_LC3_UNICAST_PRESET_48_2_1(LOCATION, CONTEXT)},
-	{"48_3_1", BT_BAP_LC3_UNICAST_PRESET_48_3_1(LOCATION, CONTEXT)},
-	{"48_4_1", BT_BAP_LC3_UNICAST_PRESET_48_4_1(LOCATION, CONTEXT)},
-	{"48_5_1", BT_BAP_LC3_UNICAST_PRESET_48_5_1(LOCATION, CONTEXT)},
-	{"48_6_1", BT_BAP_LC3_UNICAST_PRESET_48_6_1(LOCATION, CONTEXT)},
+	{"8_1_1", BT_BAP_LC3_UNICAST_PRESET_8_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"8_2_1", BT_BAP_LC3_UNICAST_PRESET_8_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"16_1_1", BT_BAP_LC3_UNICAST_PRESET_16_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"16_2_1", BT_BAP_LC3_UNICAST_PRESET_16_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"24_1_1", BT_BAP_LC3_UNICAST_PRESET_24_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"24_2_1", BT_BAP_LC3_UNICAST_PRESET_24_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"32_1_1", BT_BAP_LC3_UNICAST_PRESET_32_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"32_2_1", BT_BAP_LC3_UNICAST_PRESET_32_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"441_1_1", BT_BAP_LC3_UNICAST_PRESET_441_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"441_2_1", BT_BAP_LC3_UNICAST_PRESET_441_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_1_1", BT_BAP_LC3_UNICAST_PRESET_48_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_2_1", BT_BAP_LC3_UNICAST_PRESET_48_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_3_1", BT_BAP_LC3_UNICAST_PRESET_48_3_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_4_1", BT_BAP_LC3_UNICAST_PRESET_48_4_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_5_1", BT_BAP_LC3_UNICAST_PRESET_48_5_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_6_1", BT_BAP_LC3_UNICAST_PRESET_48_6_1(DEFAULT_LOCATION, CONTEXT)},
 	/* High-reliability presets */
-	{"8_1_2", BT_BAP_LC3_UNICAST_PRESET_8_1_2(LOCATION, CONTEXT)},
-	{"8_2_2", BT_BAP_LC3_UNICAST_PRESET_8_2_2(LOCATION, CONTEXT)},
-	{"16_1_2", BT_BAP_LC3_UNICAST_PRESET_16_1_2(LOCATION, CONTEXT)},
-	{"16_2_2", BT_BAP_LC3_UNICAST_PRESET_16_2_2(LOCATION, CONTEXT)},
-	{"24_1_2", BT_BAP_LC3_UNICAST_PRESET_24_1_2(LOCATION, CONTEXT)},
-	{"24_2_2", BT_BAP_LC3_UNICAST_PRESET_24_2_2(LOCATION, CONTEXT)},
-	{"32_1_2", BT_BAP_LC3_UNICAST_PRESET_32_1_2(LOCATION, CONTEXT)},
-	{"32_2_2", BT_BAP_LC3_UNICAST_PRESET_32_2_2(LOCATION, CONTEXT)},
-	{"441_1_2", BT_BAP_LC3_UNICAST_PRESET_441_1_2(LOCATION, CONTEXT)},
-	{"441_2_2", BT_BAP_LC3_UNICAST_PRESET_441_2_2(LOCATION, CONTEXT)},
-	{"48_1_2", BT_BAP_LC3_UNICAST_PRESET_48_1_2(LOCATION, CONTEXT)},
-	{"48_2_2", BT_BAP_LC3_UNICAST_PRESET_48_2_2(LOCATION, CONTEXT)},
-	{"48_3_2", BT_BAP_LC3_UNICAST_PRESET_48_3_2(LOCATION, CONTEXT)},
-	{"48_4_2", BT_BAP_LC3_UNICAST_PRESET_48_4_2(LOCATION, CONTEXT)},
-	{"48_5_2", BT_BAP_LC3_UNICAST_PRESET_48_5_2(LOCATION, CONTEXT)},
-	{"48_6_2", BT_BAP_LC3_UNICAST_PRESET_48_6_2(LOCATION, CONTEXT)},
+	{"8_1_2", BT_BAP_LC3_UNICAST_PRESET_8_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"8_2_2", BT_BAP_LC3_UNICAST_PRESET_8_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"16_1_2", BT_BAP_LC3_UNICAST_PRESET_16_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"16_2_2", BT_BAP_LC3_UNICAST_PRESET_16_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"24_1_2", BT_BAP_LC3_UNICAST_PRESET_24_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"24_2_2", BT_BAP_LC3_UNICAST_PRESET_24_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"32_1_2", BT_BAP_LC3_UNICAST_PRESET_32_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"32_2_2", BT_BAP_LC3_UNICAST_PRESET_32_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"441_1_2", BT_BAP_LC3_UNICAST_PRESET_441_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"441_2_2", BT_BAP_LC3_UNICAST_PRESET_441_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_1_2", BT_BAP_LC3_UNICAST_PRESET_48_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_2_2", BT_BAP_LC3_UNICAST_PRESET_48_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_3_2", BT_BAP_LC3_UNICAST_PRESET_48_3_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_4_2", BT_BAP_LC3_UNICAST_PRESET_48_4_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_5_2", BT_BAP_LC3_UNICAST_PRESET_48_5_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_6_2", BT_BAP_LC3_UNICAST_PRESET_48_6_2(DEFAULT_LOCATION, CONTEXT)},
 };
 
 static const struct named_lc3_preset lc3_broadcast_presets[] = {
-	{"8_1_1", BT_BAP_LC3_BROADCAST_PRESET_8_1_1(LOCATION, CONTEXT)},
-	{"8_2_1", BT_BAP_LC3_BROADCAST_PRESET_8_2_1(LOCATION, CONTEXT)},
-	{"16_1_1", BT_BAP_LC3_BROADCAST_PRESET_16_1_1(LOCATION, CONTEXT)},
-	{"16_2_1", BT_BAP_LC3_BROADCAST_PRESET_16_2_1(LOCATION, CONTEXT)},
-	{"24_1_1", BT_BAP_LC3_BROADCAST_PRESET_24_1_1(LOCATION, CONTEXT)},
-	{"24_2_1", BT_BAP_LC3_BROADCAST_PRESET_24_2_1(LOCATION, CONTEXT)},
-	{"32_1_1", BT_BAP_LC3_BROADCAST_PRESET_32_1_1(LOCATION, CONTEXT)},
-	{"32_2_1", BT_BAP_LC3_BROADCAST_PRESET_32_2_1(LOCATION, CONTEXT)},
-	{"441_1_1", BT_BAP_LC3_BROADCAST_PRESET_441_1_1(LOCATION, CONTEXT)},
-	{"441_2_1", BT_BAP_LC3_BROADCAST_PRESET_441_2_1(LOCATION, CONTEXT)},
-	{"48_1_1", BT_BAP_LC3_BROADCAST_PRESET_48_1_1(LOCATION, CONTEXT)},
-	{"48_2_1", BT_BAP_LC3_BROADCAST_PRESET_48_2_1(LOCATION, CONTEXT)},
-	{"48_3_1", BT_BAP_LC3_BROADCAST_PRESET_48_3_1(LOCATION, CONTEXT)},
-	{"48_4_1", BT_BAP_LC3_BROADCAST_PRESET_48_4_1(LOCATION, CONTEXT)},
-	{"48_5_1", BT_BAP_LC3_BROADCAST_PRESET_48_5_1(LOCATION, CONTEXT)},
-	{"48_6_1", BT_BAP_LC3_BROADCAST_PRESET_48_6_1(LOCATION, CONTEXT)},
+	{"8_1_1", BT_BAP_LC3_BROADCAST_PRESET_8_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"8_2_1", BT_BAP_LC3_BROADCAST_PRESET_8_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"16_1_1", BT_BAP_LC3_BROADCAST_PRESET_16_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"16_2_1", BT_BAP_LC3_BROADCAST_PRESET_16_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"24_1_1", BT_BAP_LC3_BROADCAST_PRESET_24_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"24_2_1", BT_BAP_LC3_BROADCAST_PRESET_24_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"32_1_1", BT_BAP_LC3_BROADCAST_PRESET_32_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"32_2_1", BT_BAP_LC3_BROADCAST_PRESET_32_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"441_1_1", BT_BAP_LC3_BROADCAST_PRESET_441_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"441_2_1", BT_BAP_LC3_BROADCAST_PRESET_441_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_1_1", BT_BAP_LC3_BROADCAST_PRESET_48_1_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_2_1", BT_BAP_LC3_BROADCAST_PRESET_48_2_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_3_1", BT_BAP_LC3_BROADCAST_PRESET_48_3_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_4_1", BT_BAP_LC3_BROADCAST_PRESET_48_4_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_5_1", BT_BAP_LC3_BROADCAST_PRESET_48_5_1(DEFAULT_LOCATION, CONTEXT)},
+	{"48_6_1", BT_BAP_LC3_BROADCAST_PRESET_48_6_1(DEFAULT_LOCATION, CONTEXT)},
 	/* High-reliability presets */
-	{"8_1_2", BT_BAP_LC3_BROADCAST_PRESET_8_1_2(LOCATION, CONTEXT)},
-	{"8_2_2", BT_BAP_LC3_BROADCAST_PRESET_8_2_2(LOCATION, CONTEXT)},
-	{"16_1_2", BT_BAP_LC3_BROADCAST_PRESET_16_1_2(LOCATION, CONTEXT)},
-	{"16_2_2", BT_BAP_LC3_BROADCAST_PRESET_16_2_2(LOCATION, CONTEXT)},
-	{"24_1_2", BT_BAP_LC3_BROADCAST_PRESET_24_1_2(LOCATION, CONTEXT)},
-	{"24_2_2", BT_BAP_LC3_BROADCAST_PRESET_24_2_2(LOCATION, CONTEXT)},
-	{"32_1_2", BT_BAP_LC3_BROADCAST_PRESET_32_1_2(LOCATION, CONTEXT)},
-	{"32_2_2", BT_BAP_LC3_BROADCAST_PRESET_32_2_2(LOCATION, CONTEXT)},
-	{"441_1_2", BT_BAP_LC3_BROADCAST_PRESET_441_1_2(LOCATION, CONTEXT)},
-	{"441_2_2", BT_BAP_LC3_BROADCAST_PRESET_441_2_2(LOCATION, CONTEXT)},
-	{"48_1_2", BT_BAP_LC3_BROADCAST_PRESET_48_1_2(LOCATION, CONTEXT)},
-	{"48_2_2", BT_BAP_LC3_BROADCAST_PRESET_48_2_2(LOCATION, CONTEXT)},
-	{"48_3_2", BT_BAP_LC3_BROADCAST_PRESET_48_3_2(LOCATION, CONTEXT)},
-	{"48_4_2", BT_BAP_LC3_BROADCAST_PRESET_48_4_2(LOCATION, CONTEXT)},
-	{"48_5_2", BT_BAP_LC3_BROADCAST_PRESET_48_5_2(LOCATION, CONTEXT)},
-	{"48_6_2", BT_BAP_LC3_BROADCAST_PRESET_48_6_2(LOCATION, CONTEXT)},
+	{"8_1_2", BT_BAP_LC3_BROADCAST_PRESET_8_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"8_2_2", BT_BAP_LC3_BROADCAST_PRESET_8_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"16_1_2", BT_BAP_LC3_BROADCAST_PRESET_16_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"16_2_2", BT_BAP_LC3_BROADCAST_PRESET_16_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"24_1_2", BT_BAP_LC3_BROADCAST_PRESET_24_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"24_2_2", BT_BAP_LC3_BROADCAST_PRESET_24_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"32_1_2", BT_BAP_LC3_BROADCAST_PRESET_32_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"32_2_2", BT_BAP_LC3_BROADCAST_PRESET_32_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"441_1_2", BT_BAP_LC3_BROADCAST_PRESET_441_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"441_2_2", BT_BAP_LC3_BROADCAST_PRESET_441_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_1_2", BT_BAP_LC3_BROADCAST_PRESET_48_1_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_2_2", BT_BAP_LC3_BROADCAST_PRESET_48_2_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_3_2", BT_BAP_LC3_BROADCAST_PRESET_48_3_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_4_2", BT_BAP_LC3_BROADCAST_PRESET_48_4_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_5_2", BT_BAP_LC3_BROADCAST_PRESET_48_5_2(DEFAULT_LOCATION, CONTEXT)},
+	{"48_6_2", BT_BAP_LC3_BROADCAST_PRESET_48_6_2(DEFAULT_LOCATION, CONTEXT)},
 };
 
 static bool initialized;
@@ -576,7 +576,7 @@ const struct named_lc3_preset *bap_get_named_preset(bool is_unicast, enum bt_aud
 #if defined(CONFIG_BT_PACS)
 static const struct bt_audio_codec_cap lc3_codec_cap = BT_AUDIO_CODEC_CAP_LC3(
 	BT_AUDIO_CODEC_CAP_FREQ_ANY, BT_AUDIO_CODEC_CAP_DURATION_ANY,
-	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1, 2), 30, 240, MAX_CODEC_FRAMES_PER_SDU, CONTEXT);
+	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1, 2), 30, 155, MAX_CODEC_FRAMES_PER_SDU, CONTEXT);
 
 #if defined(CONFIG_BT_PAC_SNK)
 static struct bt_pacs_cap cap_sink = {
@@ -655,8 +655,6 @@ static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_
 {
 	bt_shell_print("ASE Codec Config: conn %p ep %p dir %u", conn, ep, dir);
 
-	print_codec_cfg(0, codec_cfg);
-
 	*stream = stream_alloc();
 	if (*stream == NULL) {
 		bt_shell_print("No unicast_streams available");
@@ -683,8 +681,6 @@ static int lc3_reconfig(struct bt_bap_stream *stream, enum bt_audio_dir dir,
 	ARG_UNUSED(rsp);
 
 	bt_shell_print("ASE Codec Reconfig: stream %p", stream);
-
-	print_codec_cfg(0, codec_cfg);
 
 	if (default_stream == NULL) {
 		set_unicast_stream(stream);
@@ -947,6 +943,8 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 static void discover_all(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 {
 	ARG_UNUSED(conn);
+
+	discover_cb(conn, err, dir);
 
 	/* Sinks discovery complete, now discover sources */
 	if (dir == BT_AUDIO_DIR_SINK) {
@@ -2370,7 +2368,8 @@ static bool decode_frame(struct lc3_data *data, size_t frame_cnt)
 			bt_shell_print("[%zu]: Performing PLC", sh_stream->rx.decoded_cnt);
 		}
 
-		data->do_plc = false; /* clear flag */
+		/* If stereo then we should not clear data->do_plc if more than 1 frame is invalid*/
+		// data->do_plc = false; /* clear flag */
 	} else {
 		iso_data = net_buf_pull_mem(data->buf, octets_per_frame);
 
@@ -2569,6 +2568,8 @@ void bap_stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_i
 			}
 
 			data->do_plc = true;
+		} else {
+			data->do_plc = false;
 		}
 
 		data->buf = net_buf_ref(buf);
@@ -2589,6 +2590,8 @@ void bap_stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_i
 static void stream_enabled_cb(struct bt_bap_stream *stream)
 {
 	bt_shell_print("Stream %p enabled", stream);
+
+	print_codec_cfg(0, stream->codec_cfg);
 
 	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_SERVER)) {
 		struct bt_bap_ep_info ep_info;
@@ -2631,6 +2634,8 @@ void bap_stream_started_cb(struct bt_bap_stream *bap_stream)
 	int ret;
 
 	bt_shell_print("Stream %p started", bap_stream);
+
+	print_codec_cfg(0, bap_stream->codec_cfg);
 
 	ret = bt_bap_ep_get_info(bap_stream->ep, &info);
 	if (ret != 0) {
@@ -2815,6 +2820,8 @@ static void update_usb_streams_cb(struct shell_stream *sh_stream, void *user_dat
 static void update_usb_streams(struct shell_stream *sh_stream)
 {
 	if (sh_stream->is_rx) {
+		bap_usb_clear_frames_to_usb();
+
 		if (sh_stream == usb_left_stream) {
 			bt_shell_info("Clearing USB left stream (%p)", usb_left_stream);
 			usb_left_stream = NULL;
@@ -2845,13 +2852,14 @@ static void clear_stream_data(struct shell_stream *sh_stream)
 	}
 #endif
 
-	sh_stream->is_rx = sh_stream->is_tx = false;
-
 #if defined(CONFIG_LIBLC3)
 	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
 		update_usb_streams(sh_stream);
 	}
 #endif /* CONFIG_LIBLC3 */
+
+	/* Shall be done after update_usb_streams */
+	sh_stream->is_rx = sh_stream->is_tx = false;
 }
 
 void bap_stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
@@ -2870,6 +2878,8 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	ARG_UNUSED(pref);
 
 	bt_shell_print("Stream %p configured", stream);
+
+	print_codec_cfg(0, stream->codec_cfg);
 }
 
 static void stream_released_cb(struct bt_bap_stream *stream)
@@ -3044,7 +3054,7 @@ static int cmd_create_broadcast(const struct shell *sh, size_t argc,
 		return -ENOEXEC;
 	}
 
-	shell_print(sh, "Generated broadcast_id 0x%06X", broadcast_id);
+	shell_info(sh, "Generated broadcast_id 0x%06X", broadcast_id);
 
 	copy_broadcast_source_preset(&default_source, named_preset);
 
@@ -3283,26 +3293,61 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 		return SHELL_CMD_HELP_PRINTED;
 	}
 
+	if (IS_ENABLED(CONFIG_BT_PACS)) {
+		const struct bt_pacs_register_param pacs_param = {
+#if defined(CONFIG_BT_PAC_SNK)
+			.snk_pac = true,
+#endif /* CONFIG_BT_PAC_SNK */
+#if defined(CONFIG_BT_PAC_SNK_LOC)
+			.snk_loc = true,
+#endif /* CONFIG_BT_PAC_SNK_LOC */
+#if defined(CONFIG_BT_PAC_SRC)
+			.src_pac = true,
+#endif /* CONFIG_BT_PAC_SRC */
+#if defined(CONFIG_BT_PAC_SRC_LOC)
+			.src_loc = true,
+#endif /* CONFIG_BT_PAC_SRC_LOC */
+		};
+
+		err = bt_pacs_register(&pacs_param);
+		__ASSERT(err == 0, "Failed to register PACS: %d", err);
+
+#if defined(CONFIG_BT_PAC_SNK)
+		err = bt_pacs_cap_register(BT_AUDIO_DIR_SINK, &cap_sink);
+		__ASSERT(err == 0, "Failed to register sink capabilities: %d", err);
+#endif /* CONFIG_BT_PAC_SNK */
+#if defined(CONFIG_BT_PAC_SRC)
+		err = bt_pacs_cap_register(BT_AUDIO_DIR_SOURCE, &cap_source);
+		__ASSERT(err == 0, "Failed to register source capabilities: %d", err);
+#endif /* CONFIG_BT_PAC_SRC */
+
+		if (IS_ENABLED(CONFIG_BT_PAC_SNK_LOC)) {
+			err = bt_pacs_set_location(BT_AUDIO_DIR_SINK, DEFAULT_LOCATION);
+			__ASSERT(err == 0, "Failed to set sink location: %d", err);
+
+			err = bt_pacs_set_supported_contexts(BT_AUDIO_DIR_SINK, CONTEXT);
+			__ASSERT(err == 0, "Failed to set sink supported contexts: %d", err);
+
+			err = bt_pacs_set_available_contexts(BT_AUDIO_DIR_SINK, CONTEXT);
+			__ASSERT(err == 0, "Failed to set sink available contexts: %d", err);
+		}
+
+		if (IS_ENABLED(CONFIG_BT_PAC_SRC_LOC)) {
+			err = bt_pacs_set_location(BT_AUDIO_DIR_SOURCE, DEFAULT_LOCATION);
+			__ASSERT(err == 0, "Failed to set source location: %d", err);
+
+			err = bt_pacs_set_supported_contexts(BT_AUDIO_DIR_SOURCE, CONTEXT);
+			__ASSERT(err == 0, "Failed to set sink supported contexts: %d", err);
+
+			err = bt_pacs_set_available_contexts(BT_AUDIO_DIR_SOURCE, CONTEXT);
+			__ASSERT(err == 0, "Failed to set source available contexts: %d", err);
+		}
+	}
+
 #if defined(CONFIG_BT_BAP_UNICAST_SERVER)
 	unsigned long snk_cnt, src_cnt;
 	struct bt_bap_unicast_server_register_param unicast_server_param = {
-		CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT,
-		CONFIG_BT_ASCS_MAX_ASE_SRC_COUNT
-	};
-	const struct bt_pacs_register_param pacs_param = {
-#if defined(CONFIG_BT_PAC_SNK)
-		.snk_pac = true,
-#endif /* CONFIG_BT_PAC_SNK */
-#if defined(CONFIG_BT_PAC_SNK_LOC)
-		.snk_loc = true,
-#endif /* CONFIG_BT_PAC_SNK_LOC */
-#if defined(CONFIG_BT_PAC_SRC)
-		.src_pac = true,
-#endif /* CONFIG_BT_PAC_SRC */
-#if defined(CONFIG_BT_PAC_SRC_LOC)
-		.src_loc = true,
-#endif /* CONFIG_BT_PAC_SRC_LOC */
-	};
+		CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT, CONFIG_BT_ASCS_MAX_ASE_SRC_COUNT};
 
 	if (argc == 3) {
 		snk_cnt = shell_strtoul(argv[1], 0, &err);
@@ -3329,55 +3374,12 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 		src_cnt = CONFIG_BT_ASCS_MAX_ASE_SRC_COUNT;
 	}
 
-	err = bt_pacs_register(&pacs_param);
-	__ASSERT(err == 0, "Failed to register PACS: %d", err);
-
 	err = bt_bap_unicast_server_register(&unicast_server_param);
 	__ASSERT(err == 0, "Failed to register Unicast Server: %d", err);
 
 	err = bt_bap_unicast_server_register_cb(&unicast_server_cb);
 	__ASSERT(err == 0, "Failed to register Unicast Server Callbacks: %d", err);
 #endif /* CONFIG_BT_BAP_UNICAST_SERVER */
-
-#if defined(CONFIG_BT_PAC_SNK)
-	err = bt_pacs_cap_register(BT_AUDIO_DIR_SINK, &cap_sink);
-	__ASSERT(err == 0, "Failed to register sink capabilities: %d", err);
-#endif /* CONFIG_BT_PAC_SNK */
-#if defined(CONFIG_BT_PAC_SRC)
-	err = bt_pacs_cap_register(BT_AUDIO_DIR_SOURCE, &cap_source);
-	__ASSERT(err == 0, "Failed to register source capabilities: %d", err);
-#endif /* CONFIG_BT_PAC_SRC */
-
-	if (IS_ENABLED(CONFIG_BT_PAC_SNK_LOC)) {
-		err = bt_pacs_set_location(BT_AUDIO_DIR_SINK, LOCATION);
-		__ASSERT(err == 0, "Failed to set sink location: %d", err);
-
-		err = bt_pacs_set_supported_contexts(BT_AUDIO_DIR_SINK,
-						     CONTEXT);
-		__ASSERT(err == 0, "Failed to set sink supported contexts: %d",
-			 err);
-
-		err = bt_pacs_set_available_contexts(BT_AUDIO_DIR_SINK,
-						     CONTEXT);
-		__ASSERT(err == 0, "Failed to set sink available contexts: %d",
-			 err);
-	}
-
-	if (IS_ENABLED(CONFIG_BT_PAC_SRC_LOC)) {
-		err = bt_pacs_set_location(BT_AUDIO_DIR_SOURCE, LOCATION);
-		__ASSERT(err == 0, "Failed to set source location: %d", err);
-
-		err = bt_pacs_set_supported_contexts(BT_AUDIO_DIR_SOURCE,
-						     CONTEXT);
-		__ASSERT(err == 0, "Failed to set sink supported contexts: %d",
-			 err);
-
-		err = bt_pacs_set_available_contexts(BT_AUDIO_DIR_SOURCE,
-						     CONTEXT);
-		__ASSERT(err == 0,
-			 "Failed to set source available contexts: %d",
-			 err);
-	}
 
 #if defined(CONFIG_BT_BAP_UNICAST)
 	for (size_t i = 0U; i < ARRAY_SIZE(unicast_streams); i++) {
