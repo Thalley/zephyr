@@ -23,9 +23,10 @@
 
 #include <zephyr/autoconf.h>
 #include <zephyr/bluetooth/assigned_numbers.h>
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/hci_types.h>
-#include <zephyr/bluetooth/iso.h>
+#include <zephyr/bluetooth/audio/audio.h>
+#include <zephyr/bluetooth/audio/bap.h>
+#include <zephyr/bluetooth/audio/bap_lc3_preset.h>
+#include <zephyr/bluetooth/audio/cap.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/atomic_types.h>
@@ -59,11 +60,10 @@ size_t cap_initiator_pa_data_add(struct bt_data *data_array, const size_t data_a
 /* Must guard before including audio.h as audio.h uses Kconfigs guarded by
  * CONFIG_BT_AUDIO
  */
-#include <zephyr/bluetooth/audio/audio.h>
-#include <zephyr/bluetooth/audio/bap.h>
-#include <zephyr/bluetooth/audio/bap_lc3_preset.h>
-#include <zephyr/bluetooth/audio/cap.h>
+#include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/data.h>
+#include <zephyr/bluetooth/hci_types.h>
+#include <zephyr/bluetooth/iso.h>
 
 unsigned long bap_get_stats_interval(void);
 
