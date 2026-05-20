@@ -37,6 +37,7 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/data.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/slist.h>
 

@@ -32,6 +32,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/iso.h>
+#include <zephyr/bluetooth/data.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/util_macro.h>

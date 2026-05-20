@@ -36,6 +36,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/audio/cap.h>
+#include <zephyr/bluetooth/data.h>
 
 #include "common/bt_shell_private.h"
 #include "host/shell/bt.h"
