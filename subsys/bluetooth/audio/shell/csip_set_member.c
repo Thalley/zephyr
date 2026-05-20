@@ -20,9 +20,9 @@
 #include <zephyr/bluetooth/assigned_numbers.h>
 #include <zephyr/bluetooth/audio/csip.h>
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/data.h>
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/data.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell_string_conv.h>
 #include <zephyr/sys/__assert.h>
