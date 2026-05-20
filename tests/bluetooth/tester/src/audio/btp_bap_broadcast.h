@@ -16,6 +16,7 @@
 #include <zephyr/bluetooth/audio/cap.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/iso.h>
+#include <zephyr/bluetooth/data.h>
 
 #include "btp_bap_audio_stream.h"
 

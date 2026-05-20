@@ -18,6 +18,7 @@
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/services/ias.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/data.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sys/byteorder.h>

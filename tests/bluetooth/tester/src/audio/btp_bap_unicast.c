@@ -33,6 +33,7 @@
 #include <zephyr/sys/ring_buffer.h>
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/bluetooth/hci_types.h>
+#include <zephyr/bluetooth/data.h>
 #include <hci_core.h>
 
 #include "ascs_internal.h"

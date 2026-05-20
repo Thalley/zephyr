@@ -37,6 +37,7 @@
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/iso.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/data.h>
 #include <zephyr/net_buf.h>
 #include <zephyr/sys/slist.h>
 #include <zephyr/sys/util_macro.h>
