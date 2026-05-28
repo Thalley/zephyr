@@ -1338,6 +1338,12 @@ static int cmd_broadcast_start(const struct shell *sh, size_t argc, char *argv[]
 		return -ENOEXEC;
 	}
 
+	if (default_source.handover_in_progress) {
+		shell_info(sh, "CAP Handover in progress");
+
+		return -ENOEXEC;
+	}
+
 	if (default_source.cap_source == NULL || !default_source.is_cap) {
 		shell_info(sh, "CAP Broadcast source not created");
 
@@ -1362,6 +1368,12 @@ static int cmd_broadcast_update(const struct shell *sh, size_t argc, char *argv[
 	int err;
 
 	ARG_UNUSED(argc);
+
+	if (default_source.handover_in_progress) {
+		shell_info(sh, "CAP Handover in progress");
+
+		return -ENOEXEC;
+	}
 
 	if (default_source.cap_source == NULL || !default_source.is_cap) {
 		shell_info(sh, "CAP Broadcast source not created");
@@ -1397,6 +1409,12 @@ static int cmd_broadcast_stop(const struct shell *sh, size_t argc, char *argv[])
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
+
+	if (default_source.handover_in_progress) {
+		shell_info(sh, "CAP Handover in progress");
+
+		return -ENOEXEC;
+	}
 
 	if (default_source.cap_source == NULL || !default_source.is_cap) {
 		shell_info(sh, "CAP Broadcast source not created");
