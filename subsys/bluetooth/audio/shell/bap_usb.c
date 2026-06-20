@@ -534,9 +534,9 @@ int bap_usb_init(void)
 		.get_recv_buf = usb_get_recv_buf_cb,
 		.data_recv_cb = usb_data_recv_cb,
 #endif /* CONFIG_BT_AUDIO_TX */
-#if defined(CONFIG_BT_AUDIO_RX)
+#if defined(CONFIG_BT_BAP_SHELL_PCM_BACKEND_USB)
 		.buf_release_cb = usb_buf_release_cb,
-#endif /* CONFIG_BT_AUDIO_RX */
+#endif /* CONFIG_BT_BAP_SHELL_PCM_BACKEND_USB */
 	};
 	int err;
 

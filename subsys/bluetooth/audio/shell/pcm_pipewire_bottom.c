@@ -63,7 +63,6 @@ static void pipewire_stream_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_buffer *spa_buf;
 	struct spa_data *data;
-	size_t copied;
 
 	ARG_UNUSED(userdata);
 
@@ -81,11 +80,11 @@ static void pipewire_stream_process(void *userdata)
 	}
 
 	memset(data->data, 0, data->maxsize);
-	copied = pipewire_copy_from_ring(data->data, data->maxsize);
+	(void)pipewire_copy_from_ring(data->data, data->maxsize);
 
 	data->chunk->offset = 0U;
 	data->chunk->stride = BAP_PIPEWIRE_STRIDE;
-	data->chunk->size = copied;
+	data->chunk->size = data->maxsize;
 
 	pw_stream_queue_buffer(pw_state.stream, buffer);
 }

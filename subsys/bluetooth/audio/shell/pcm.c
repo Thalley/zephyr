@@ -235,8 +235,8 @@ bool bap_pcm_stream_matches(const void *stream, enum bt_audio_location chan_allo
 	return true;
 }
 
-int bap_pcm_add_frame(const void *stream, enum bt_audio_location chan_allocation, const int16_t *frame,
-		      size_t frame_size, uint32_t ts)
+int bap_pcm_add_frame(const void *stream, enum bt_audio_location chan_allocation,
+		      const int16_t *frame, size_t frame_size, uint32_t ts)
 {
 	const bool is_left = (chan_allocation & BT_AUDIO_LOCATION_FRONT_LEFT) != 0U;
 	const bool is_right = (chan_allocation & BT_AUDIO_LOCATION_FRONT_RIGHT) != 0U;

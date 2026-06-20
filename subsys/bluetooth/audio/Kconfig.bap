@@ -301,6 +301,7 @@ config BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE
 	bool "PipeWire host audio"
 	depends on ARCH_POSIX
 	depends on EXTERNAL_LIBC
+	depends on BOARD_NATIVE_SIM_NATIVE_64
 	select RING_BUFFER
 	help
 	  Route decoded Bluetooth audio to a PipeWire playback stream when
