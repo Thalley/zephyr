@@ -93,8 +93,24 @@ zephyr_library_sources_ifdef(
   CONFIG_BT_BAP_STREAM
   bap.c
   )
+zephyr_library_sources_ifdef(CONFIG_BT_BAP_SHELL_PCM pcm.c)
 if(CONFIG_LIBLC3 AND CONFIG_USBD_AUDIO2_CLASS)
   zephyr_library_sources(bap_usb.c)
+endif()
+if(CONFIG_LIBLC3 AND CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE)
+  if(${CMAKE_HOST_SYSTEM_NAME} STREQUAL Linux)
+    find_package(PkgConfig REQUIRED)
+    pkg_search_module(PIPEWIRE REQUIRED libpipewire-0.3)
+    list(TRANSFORM PIPEWIRE_INCLUDE_DIRS PREPEND "-I" OUTPUT_VARIABLE PIPEWIRE_INCLUDE_DIRS_OPTION)
+    target_compile_options(native_simulator INTERFACE "${PIPEWIRE_INCLUDE_DIRS_OPTION}"
+                           ${PIPEWIRE_CFLAGS_OTHER})
+    list(TRANSFORM PIPEWIRE_LIBRARIES PREPEND "-l" OUTPUT_VARIABLE PIPEWIRE_LIBRARIES_OPTION)
+    target_link_options(native_simulator INTERFACE "${PIPEWIRE_LIBRARIES_OPTION}")
+    zephyr_library_sources(pcm_pipewire.c)
+    target_sources(native_simulator INTERFACE pcm_pipewire_bottom.c)
+  else()
+    message(FATAL_ERROR "CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE is only available on Linux")
+  endif()
 endif()
 zephyr_library_sources_ifdef(
   CONFIG_BT_BAP_SCAN_DELEGATOR
