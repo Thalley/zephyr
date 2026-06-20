@@ -370,19 +370,23 @@ static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_
 		return;
 	}
 
-	client = client_alloc(conn);
-	if (unlikely(!client)) {
-		LOG_ERR("Failed to allocate client");
-		return;
-	}
-
-	ret = bt_conn_get_info(client->conn, &info);
+	ret = bt_conn_get_info(conn, &info);
 	if (ret < 0) {
 		LOG_ERR("bt_conn_get_info err %d", ret);
 		return;
 	}
 
+	/* The service allows operations with paired devices only. Skip non-bonded
+	 * connections to avoid exhausting the client pool, which is sized for
+	 * paired devices (MAX_INSTS = MIN(BT_MAX_CONN, BT_MAX_PAIRED)).
+	 */
 	if (!bt_le_bond_exists(info.id, info.le.dst)) {
+		return;
+	}
+
+	client = client_alloc(conn);
+	if (unlikely(!client)) {
+		LOG_ERR("Failed to allocate client");
 		return;
 	}
 
