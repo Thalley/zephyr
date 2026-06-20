@@ -23,9 +23,11 @@ Requirements
 * BlueZ running on the host, or
 * A board with Bluetooth Low Energy 5.2 support
 
-For host audio playback on ``native_sim/native/64``, prefer the Bluetooth
-audio shell PipeWire backend. This sample still uses its sample-local USB audio
-output path and is not yet migrated to the shared host PCM backend model.
+For host audio playback on ``native_sim/native/64``, enable
+:kconfig:option:`CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT` to route decoded audio
+through a PipeWire playback stream. This option co-exists with the USB and
+codec output paths and requires ``libpipewire-0.3`` to be installed on the
+host.
 
 Building and Running
 ********************
