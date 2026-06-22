@@ -352,6 +352,28 @@ Here are more details on the peripherals that are currently provided with this b
   output file cannot be opened, the driver prints a warning and discards TX
   data for that stream run.
 
+**Bluetooth audio shell PipeWire playback**
+  The Bluetooth audio shell can route decoded LC3 RX audio to a host PipeWire
+  playback stream when
+  :kconfig:option:`CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE` is enabled.
+
+  This backend is intended for ``native_sim/native/64`` bring-up first. It uses
+  the host PipeWire library through ``pkg-config`` and currently supports
+  playback only. Host-side format conversion and resampling are handled by
+  PipeWire.
+
+  The default sink target and latency come from
+  :kconfig:option:`CONFIG_BT_BAP_SHELL_PCM_PIPEWIRE_TARGET` and
+  :kconfig:option:`CONFIG_BT_BAP_SHELL_PCM_PIPEWIRE_LATENCY`. They can be
+  overridden at runtime with ``--bt-audio-pcm-sink=<node>`` and
+  ``--bt-audio-pcm-latency=<quantum/rate>``.
+
+  You also need ``pkg-config`` and the PipeWire development package installed
+  on the host. For 64-bit builds this is typically ``libpipewire-0.3-dev`` on
+  Debian and Ubuntu systems. If you adapt this backend to the default 32-bit
+  ``native_sim`` target, the matching 32-bit development package and
+  ``PKG_CONFIG_PATH`` setup are also required.
+
 **Real time clock**
   The real time clock model provides a model of a constantly powered clock.
   By default this is initialized to the host time at boot.
@@ -786,6 +808,7 @@ host libC (:kconfig:option:`CONFIG_EXTERNAL_LIBC`):
 
      ADC, ADC emul, :kconfig:option:`CONFIG_ADC_EMUL`, All
      Bluetooth, :ref:`Userchan <nsim_bt_host_cont>`, :kconfig:option:`CONFIG_BT_USERCHAN`, Host and pico libC
+     Bluetooth, Bluetooth audio shell PipeWire playback, :kconfig:option:`CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE`, Host libC
      CAN, CAN native Linux, :kconfig:option:`CONFIG_CAN_NATIVE_LINUX`, All
      Console backend, :ref:`POSIX arch console <nsim_back_console>`, :kconfig:option:`CONFIG_POSIX_ARCH_CONSOLE`, All
      Display, :ref:`Display SDL <nsim_per_disp_sdl>`, :kconfig:option:`CONFIG_SDL_DISPLAY`, All

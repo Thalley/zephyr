@@ -158,9 +158,6 @@ void bap_foreach_stream(void (*func)(struct shell_stream *sh_stream, void *data)
 
 int bap_usb_init(void);
 
-int bap_usb_add_frame_to_usb(enum bt_audio_location lc3_chan_allocation, const int16_t *frame,
-			     size_t frame_size, uint32_t ts);
-void bap_usb_clear_frames_to_usb(void);
 uint16_t get_next_seq_num(struct bt_bap_stream *bap_stream);
 struct shell_stream *shell_stream_from_bap_stream(struct bt_bap_stream *bap_stream);
 struct bt_bap_stream *bap_stream_from_shell_stream(struct shell_stream *sh_stream);
@@ -169,6 +166,16 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream);
 void bap_usb_get_frame(struct shell_stream *sh_stream, enum bt_audio_location chan_alloc,
 		       int16_t buffer[]);
 size_t bap_usb_get_frame_size(const struct shell_stream *sh_stream);
+
+#if defined(CONFIG_BT_BAP_SHELL_PCM)
+int bap_pcm_init(void);
+int bap_pcm_stream_started(const void *stream, enum bt_audio_location chan_allocation);
+void bap_pcm_stream_stopped(const void *stream);
+bool bap_pcm_stream_matches(const void *stream, enum bt_audio_location chan_allocation);
+int bap_pcm_add_frame(const void *stream, enum bt_audio_location chan_allocation,
+		      const int16_t *frame, size_t frame_size, uint32_t ts);
+void bap_pcm_clear_frames(void);
+#endif /* CONFIG_BT_BAP_SHELL_PCM */
 
 struct broadcast_source {
 	bool is_cap: 1;

@@ -218,6 +218,41 @@ ID before syncing to the BIG.
    Sink 0x20019110 is ready to sync without encryption
    uart:~$ bap sync_broadcast 0x01
 
+Host audio playback on native_sim
+*********************************
+
+The Bluetooth audio shell can route decoded LC3 RX audio to a host PCM sink
+backend.
+
+The first host-audio backend is PipeWire playback on
+``native_sim/native/64``. This is a host audio backend for Linux development
+and validation; it is not USB audio emulation.
+
+The backend currently supports:
+
+* RX playback only
+* 48 kHz, signed 16-bit, stereo PCM inside the shell backend
+* PipeWire-driven host format conversion and resampling
+
+The backend currently does not support:
+
+* Bluetooth TX/capture through PipeWire
+* Timestamp-based presentation delay handling beyond buffered pacing
+
+Enable it with:
+
+.. code-block:: console
+
+   CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE=y
+
+At runtime, native_sim command-line options can select the PipeWire sink node
+and latency:
+
+.. code-block:: console
+
+   --bt-audio-pcm-sink=<node>
+   --bt-audio-pcm-latency=<quantum/rate>
+
 
 Scan for and establish a broadcast sink stream by broadcast name
 ----------------------------------------------------------------

@@ -566,6 +566,28 @@ tests:
       - CONFIG_RING_BUFFER=n
       - CONFIG_USB_DEVICE_STACK=n
       - CONFIG_USBD_AUDIO2_CLASS=n
+  bluetooth.audio_shell.pcm_no_backend:
+    extra_args: CONF_FILE="audio.conf"
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_configs:
+      - CONFIG_BT_BAP_SHELL_PCM_BACKEND_NONE=y
+      - CONFIG_USBD_AUDIO2_CLASS=n
+      - CONFIG_USB_DEVICE_STACK=n
+  bluetooth.audio_shell.pcm_pipewire:
+    extra_args: CONF_FILE="audio.conf"
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_configs:
+      - CONFIG_BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE=y
+      - CONFIG_USBD_AUDIO2_CLASS=n
+      - CONFIG_USB_DEVICE_STACK=n
   bluetooth.native_shell:
     build_only: true
     extra_args:

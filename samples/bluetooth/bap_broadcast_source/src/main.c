@@ -118,7 +118,9 @@ static struct bt_bap_lc3_preset preset_active = BT_BAP_LC3_BROADCAST_PRESET_48_2
 
 #define RING_BUF_USB_FRAMES  20U
 #define AUDIO_RING_BUF_BYTES (USB_DOWNSSAMPLE_CNT * USB_BYTES_PER_SAMPLE * RING_BUF_USB_FRAMES)
-#else /* !defined(CONFIG_USE_USB_AUDIO_INPUT) */
+#elif defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT)
+#include "pipewire.h"
+#else /* !defined(CONFIG_USE_USB_AUDIO_INPUT) && !defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT) */
 
 #include <math.h>
 
@@ -228,6 +230,15 @@ static void send_data(struct broadcast_source_stream *source_stream)
 		printk("Not enough bytes ready, padding %d!\n", padding_size);
 		memset(&((uint8_t *)send_pcm_data)[size], 0, padding_size);
 	}
+#elif defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT)
+	{
+		const size_t stream_idx = (size_t)(source_stream - streams);
+		const size_t num_samples = ARRAY_SIZE(send_pcm_data);
+
+		if (!pipewire_get_samples(stream_idx, send_pcm_data, num_samples)) {
+			printk("PipeWire: not enough samples available, padding with zeros\n");
+		}
+	}
 #endif
 
 	ret = lc3_encode(source_stream->lc3_encoder, LC3_PCM_FORMAT_S16, send_pcm_data, 1,
@@ -301,8 +312,8 @@ static void init_lc3_thread(void *arg1, void *arg2, void *arg3)
 		return;
 	}
 
-#if !defined(CONFIG_USE_USB_AUDIO_INPUT)
-	/* If USB is not used as a sound source, generate a sine wave */
+#if !defined(CONFIG_USE_USB_AUDIO_INPUT) && !defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT)
+	/* If neither USB nor PipeWire is used as a sound source, generate a sine wave */
 	fill_audio_buf_sin(send_pcm_data, frame_duration_us, AUDIO_TONE_FREQUENCY_HZ, freq_hz);
 #endif
 
@@ -618,6 +629,16 @@ int main(void)
 	printk("USB initialized\n");
 
 #endif /* defined(CONFIG_USE_USB_AUDIO_INPUT) */
+#if defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT)
+	err = pipewire_init(BROADCAST_SAMPLE_RATE);
+	if (err != 0) {
+		printk("Failed to init PipeWire capture: %d\n", err);
+		return err;
+	}
+
+	printk("PipeWire capture initialized\n");
+
+#endif /* defined(CONFIG_USE_PIPEWIRE_AUDIO_INPUT) */
 	k_thread_start(encoder);
 #endif /* defined(CONFIG_LIBLC3) */
 

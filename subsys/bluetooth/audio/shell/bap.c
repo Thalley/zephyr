@@ -2564,13 +2564,6 @@ K_MEM_SLAB_DEFINE_TYPE(lc3_data_slab, struct lc3_data, CONFIG_BT_ISO_RX_BUF_COUN
 static int16_t lc3_rx_buf[LC3_MAX_NUM_SAMPLES_MONO];
 static K_FIFO_DEFINE(lc3_in_fifo);
 
-/* We only want to send USB to left/right from a single stream. If we have 2 left streams, the
- * outgoing audio is going to be terrible.
- * Since a stream can contain stereo data, both of these may be the same stream.
- */
-static struct shell_stream *usb_left_stream;
-static struct shell_stream *usb_right_stream;
-
 static int init_lc3_decoder(struct shell_stream *sh_stream)
 {
 	if (sh_stream == NULL) {
@@ -2600,7 +2593,7 @@ static int init_lc3_decoder(struct shell_stream *sh_stream)
 	/* Create the decoder instance. This shall complete before stream_started() is called. */
 	sh_stream->rx.lc3_decoder =
 		lc3_setup_decoder(sh_stream->lc3_frame_duration_us, sh_stream->lc3_freq_hz,
-				  IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) ? USB_SAMPLE_RATE : 0,
+				  IS_ENABLED(CONFIG_BT_BAP_SHELL_PCM) ? USB_SAMPLE_RATE : 0,
 				  &sh_stream->rx.lc3_decoder_mem);
 	if (sh_stream->rx.lc3_decoder == NULL) {
 		bt_shell_error("Failed to setup LC3 decoder - wrong parameters?");
@@ -2659,36 +2652,32 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 		if (decode_frame(data, frame_cnt + decoded_frames)) {
 			decoded_frames++;
 
-			if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
+			if (IS_ENABLED(CONFIG_BT_BAP_SHELL_PCM)) {
 				enum bt_audio_location chan_alloc;
 				int err;
 
 				err = get_lc3_chan_alloc_from_index(sh_stream, i, &chan_alloc);
 				if (err != 0) {
-					/* Not suitable for USB */
+					/* Not suitable for PCM playback */
 					continue;
 				}
 
-				/* We only want to left or right from one stream to USB */
-				if ((chan_alloc == BT_AUDIO_LOCATION_FRONT_LEFT &&
-				     sh_stream != usb_left_stream) ||
-				    (chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT &&
-				     sh_stream != usb_right_stream)) {
+				if (!bap_pcm_stream_matches(sh_stream, chan_alloc)) {
 					continue;
 				}
 
-				err = bap_usb_add_frame_to_usb(chan_alloc, lc3_rx_buf,
-							       sizeof(lc3_rx_buf), data->ts);
+				err = bap_pcm_add_frame(sh_stream, chan_alloc, lc3_rx_buf,
+							sizeof(lc3_rx_buf), data->ts);
 				if (err == -EINVAL) {
 					continue;
 				}
 			}
 		} else {
-			/* If decoding failed, we clear the data to USB as it would contain
+			/* If decoding failed, we clear the data to PCM as it would contain
 			 * invalid data
 			 */
-			if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
-				bap_usb_clear_frames_to_usb();
+			if (IS_ENABLED(CONFIG_BT_BAP_SHELL_PCM)) {
+				bap_pcm_clear_frames();
 			}
 
 			break;
@@ -3010,27 +2999,14 @@ static void stream_started_cb(struct bt_bap_stream *bap_stream)
 
 			sh_stream->rx.decoded_cnt = 0U;
 
-			if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
-				if ((sh_stream->lc3_chan_allocation &
-				     BT_AUDIO_LOCATION_FRONT_LEFT) != 0) {
-					if (usb_left_stream == NULL) {
-						bt_shell_info("Setting USB left stream to %p",
-							      sh_stream);
-						usb_left_stream = sh_stream;
-					} else {
-						bt_shell_warn("Multiple left streams started");
-					}
-				}
+			if (IS_ENABLED(CONFIG_BT_BAP_SHELL_PCM)) {
+				const int err =
+					bap_pcm_stream_started(sh_stream,
+							      sh_stream->lc3_chan_allocation);
 
-				if ((sh_stream->lc3_chan_allocation &
-				     BT_AUDIO_LOCATION_FRONT_RIGHT) != 0) {
-					if (usb_right_stream == NULL) {
-						bt_shell_info("Setting USB right stream to %p",
-							      sh_stream);
-						usb_right_stream = sh_stream;
-					} else {
-						bt_shell_warn("Multiple right streams started");
-					}
+				if (err != 0) {
+					bt_shell_error("Failed to start PCM sink stream: %d", err);
+					return;
 				}
 			}
 		}
@@ -3058,44 +3034,6 @@ static void stream_started_cb(struct bt_bap_stream *bap_stream)
 	}
 #endif
 }
-
-#if defined(CONFIG_LIBLC3)
-static void update_usb_streams_cb(struct shell_stream *sh_stream, void *user_data)
-{
-	ARG_UNUSED(user_data);
-
-	if (sh_stream->is_rx) {
-		if (usb_left_stream == NULL &&
-		    (sh_stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_LEFT) != 0) {
-			bt_shell_info("Setting new USB left stream to %p", sh_stream);
-			usb_left_stream = sh_stream;
-		}
-
-		if (usb_right_stream == NULL &&
-		    (sh_stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_RIGHT) != 0) {
-			bt_shell_info("Setting new USB right stream to %p", sh_stream);
-			usb_right_stream = sh_stream;
-		}
-	}
-}
-
-static void update_usb_streams(struct shell_stream *sh_stream)
-{
-	if (sh_stream->is_rx) {
-		if (sh_stream == usb_left_stream) {
-			bt_shell_info("Clearing USB left stream (%p)", usb_left_stream);
-			usb_left_stream = NULL;
-		}
-
-		if (sh_stream == usb_right_stream) {
-			bt_shell_info("Clearing USB right stream (%p)", usb_right_stream);
-			usb_right_stream = NULL;
-		}
-
-		bap_foreach_stream(update_usb_streams_cb, NULL);
-	}
-}
-#endif /* CONFIG_LIBLC3 */
 
 static void clear_stream_data(struct shell_stream *sh_stream)
 {
@@ -3127,13 +3065,13 @@ static void clear_stream_data(struct shell_stream *sh_stream)
 	}
 #endif
 
-#if defined(CONFIG_LIBLC3)
-	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
-		update_usb_streams(sh_stream);
+#if defined(CONFIG_BT_BAP_SHELL_PCM)
+	if (sh_stream->is_rx) {
+		bap_pcm_stream_stopped(sh_stream);
 	}
-#endif /* CONFIG_LIBLC3 */
+#endif /* CONFIG_BT_BAP_SHELL_PCM */
 
-	/* Shall be done after update_usb_streams */
+	/* Shall be done after the PCM sink stream selection is updated */
 	sh_stream->is_rx = sh_stream->is_tx = false;
 }
 
@@ -4012,6 +3950,11 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 	    (IS_ENABLED(CONFIG_BT_AUDIO_RX) || IS_ENABLED(CONFIG_BT_AUDIO_TX))) {
 		err = bap_usb_init();
 		__ASSERT(err == 0, "Failed to enable USB: %d", err);
+	}
+
+	if (IS_ENABLED(CONFIG_BT_BAP_SHELL_PCM)) {
+		err = bap_pcm_init();
+		__ASSERT(err == 0, "Failed to initialize PCM backend: %d", err);
 	}
 #endif /* CONFIG_LIBLC3 */
 

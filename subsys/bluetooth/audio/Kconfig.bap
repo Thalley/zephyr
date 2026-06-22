@@ -273,6 +273,75 @@ config BT_BAP_STREAM
 	default y if BT_ASCS || BT_BAP_UNICAST_CLIENT || \
 			BT_BAP_BROADCAST_SOURCE || BT_BAP_BROADCAST_SINK
 
+choice BT_BAP_SHELL_PCM_BACKEND
+	prompt "Bluetooth audio shell PCM backend"
+	default BT_BAP_SHELL_PCM_BACKEND_NONE
+	depends on LIBLC3
+	depends on BT_SHELL
+	depends on BT_BAP_STREAM
+	depends on BT_AUDIO_RX
+	help
+	  Selects the decoded PCM sink backend used by the Bluetooth audio
+	  shell for LC3 RX playback.
+
+config BT_BAP_SHELL_PCM_BACKEND_NONE
+	bool "None"
+	help
+	  Do not route decoded Bluetooth audio to a host or device PCM sink.
+
+config BT_BAP_SHELL_PCM_BACKEND_USB
+	bool "USB audio class"
+	depends on USBD_AUDIO2_CLASS
+	select RING_BUFFER
+	help
+	  Route decoded Bluetooth audio to the USB audio class sink exposed by
+	  the shell.
+
+config BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE
+	bool "PipeWire host audio"
+	depends on ARCH_POSIX
+	depends on EXTERNAL_LIBC
+	depends on BOARD_NATIVE_SIM_NATIVE_64
+	select RING_BUFFER
+	help
+	  Route decoded Bluetooth audio to a PipeWire playback stream when
+	  running on native_sim/native/64 with host libc.
+
+endchoice
+
+config BT_BAP_SHELL_PCM
+	bool
+	default y if BT_BAP_SHELL_PCM_BACKEND_USB || BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE
+
+if BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE
+
+config BT_BAP_SHELL_PCM_PIPEWIRE_TARGET
+	string "Default PipeWire sink target"
+	default ""
+	help
+	  Optional default PipeWire target object used for shell playback.
+	  Leave empty to let PipeWire choose the default sink. This may be
+	  overridden at runtime with --bt-audio-pcm-sink=<node>.
+
+config BT_BAP_SHELL_PCM_PIPEWIRE_LATENCY
+	string "Default PipeWire latency"
+	default "480/48000"
+	help
+	  Default PipeWire node latency property for playback. The format is
+	  PipeWire's usual quantum/rate string, for example 480/48000 for
+	  10 ms. This may be overridden at runtime with
+	  --bt-audio-pcm-latency=<latency>.
+
+config BT_BAP_SHELL_PCM_PIPEWIRE_BUFFER_MS
+	int "PipeWire host buffer size in milliseconds"
+	default 60
+	range 10 500
+	help
+	  Size of the host-side PCM buffer used between Zephyr audio threads
+	  and PipeWire callbacks.
+
+endif # BT_BAP_SHELL_PCM_BACKEND_PIPEWIRE
+
 config BT_BAP_DEBUG_STREAM_SEQ_NUM
 	bool "Bluetooth Audio Stream sequence number debug"
 	depends on BT_BAP_STREAM_LOG_LEVEL >= BT_BAP_STREAM_LOG_LEVEL_WRN

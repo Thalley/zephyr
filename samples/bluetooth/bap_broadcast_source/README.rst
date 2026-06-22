@@ -22,6 +22,12 @@ Requirements
 * BlueZ running on the host, or
 * A board with Bluetooth Low Energy 5.2 support
 
+For audio input on ``native_sim/native/64``, enable
+:kconfig:option:`CONFIG_USE_PIPEWIRE_AUDIO_INPUT` to capture audio from a
+PipeWire source and encode it as the broadcast payload. This option requires
+``libpipewire-0.3`` to be installed on the host and replaces the built-in
+sine-wave generator.
+
 Building and Running
 ********************
 

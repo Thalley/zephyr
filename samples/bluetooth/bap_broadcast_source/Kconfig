@@ -52,6 +52,41 @@ config USE_USB_AUDIO_INPUT
 	select USBD_AUDIO2_CLASS
 	select RING_BUFFER
 
+config USE_PIPEWIRE_AUDIO_INPUT
+	bool "Use PipeWire audio as input"
+	default n
+	depends on ENABLE_LC3
+	depends on ARCH_POSIX
+	depends on EXTERNAL_LIBC
+	depends on BOARD_NATIVE_SIM_NATIVE_64
+	help
+	  Enables PipeWire audio capture as the audio source when running on
+	  native_sim/native/64. Audio is captured from a PipeWire source at
+	  48 kHz stereo and decimated to the selected broadcast sample rate.
+	  This option co-exists with the sine-wave generator; when enabled it
+	  replaces the sine wave rather than the USB path.
+
+if USE_PIPEWIRE_AUDIO_INPUT
+
+config BROADCAST_SOURCE_PIPEWIRE_SOURCE
+	string "Default PipeWire capture source target"
+	default ""
+	help
+	  Optional default PipeWire source node to capture from. Leave empty
+	  to let PipeWire choose the default source. May be overridden at
+	  runtime with --bt-broadcast-source-pcm-source=<node>.
+
+config BROADCAST_SOURCE_PIPEWIRE_LATENCY
+	string "Default PipeWire capture latency"
+	default "480/48000"
+	help
+	  Default PipeWire node latency for the capture stream. The format is
+	  PipeWire's usual quantum/rate string, for example 480/48000 for
+	  10 ms. May be overridden at runtime with
+	  --bt-broadcast-source-pcm-latency=<latency>.
+
+endif # USE_PIPEWIRE_AUDIO_INPUT
+
 config BROADCAST_CODE
 	string "The broadcast code (if any) to use for encrypted broadcast"
 	default ""

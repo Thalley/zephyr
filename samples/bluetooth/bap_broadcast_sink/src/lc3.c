@@ -42,6 +42,7 @@
 #include "stream_rx.h"
 #include "usb.h"
 #include "hw_codec.h"
+#include "pipewire.h"
 
 LOG_MODULE_REGISTER(lc3, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -64,6 +65,10 @@ static K_FIFO_DEFINE(lc3_in_fifo);
  */
 static struct stream_rx *usb_left_stream;
 static struct stream_rx *usb_right_stream;
+
+/* Track which streams feed PipeWire left and right channels */
+static struct stream_rx *pipewire_left_stream;
+static struct stream_rx *pipewire_right_stream;
 
 static int init_lc3_decoder(struct stream_rx *stream, uint32_t lc3_frame_duration_us,
 			    uint32_t lc3_freq_hz)
@@ -88,10 +93,13 @@ static int init_lc3_decoder(struct stream_rx *stream, uint32_t lc3_frame_duratio
 	LOG_INF("Initializing the LC3 decoder with %u us duration and %u Hz frequency",
 		lc3_frame_duration_us, lc3_freq_hz);
 	/* Create the decoder instance. This shall complete before stream_started() is called. */
-	stream->lc3_decoder =
-		lc3_setup_decoder(lc3_frame_duration_us, lc3_freq_hz,
-				  IS_ENABLED(CONFIG_USE_USB_AUDIO_OUTPUT) ? USB_SAMPLE_RATE_HZ : 0,
-				  &stream->lc3_decoder_mem);
+	stream->lc3_decoder = lc3_setup_decoder(
+		lc3_frame_duration_us, lc3_freq_hz,
+		(IS_ENABLED(CONFIG_USE_USB_AUDIO_OUTPUT) ||
+		 IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT))
+			? 48000U
+			: 0,
+		&stream->lc3_decoder_mem);
 	if (stream->lc3_decoder == NULL) {
 		LOG_ERR("Failed to setup LC3 decoder - wrong parameters?\n");
 		return -EINVAL;
@@ -147,7 +155,7 @@ static bool decode_frame(struct lc3_data *data, size_t frame_cnt)
 static int get_lc3_chan_alloc_from_index(const struct stream_rx *stream, uint8_t index,
 					 enum bt_audio_location *chan_alloc)
 {
-#if defined(CONFIG_USE_USB_AUDIO_OUTPUT)
+#if defined(CONFIG_USE_USB_AUDIO_OUTPUT) || defined(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)
 	const bool has_left = (stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_LEFT) != 0;
 	const bool has_right = (stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_RIGHT) != 0;
 	const bool is_mono = stream->lc3_chan_allocation == BT_AUDIO_LOCATION_MONO_AUDIO;
@@ -164,14 +172,14 @@ static int get_lc3_chan_alloc_from_index(const struct stream_rx *stream, uint8_t
 	} else if (is_mono) {
 		*chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
 	} else {
-		/* Not suitable for USB */
+		/* Not suitable for PCM output */
 		return -EINVAL;
 	}
 
 	return 0;
-#else  /* !CONFIG_USE_USB_AUDIO_OUTPUT */
+#else  /* !CONFIG_USE_USB_AUDIO_OUTPUT && !CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT */
 	return -EINVAL;
-#endif /* CONFIG_USE_USB_AUDIO_OUTPUT */
+#endif /* CONFIG_USE_USB_AUDIO_OUTPUT || CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT */
 }
 
 static int usb_add_frame(const struct stream_rx *stream, int chn, uint32_t ts)
@@ -193,6 +201,25 @@ static int usb_add_frame(const struct stream_rx *stream, int chn, uint32_t ts)
 	 * For now we just send audio to USB as soon as we get it
 	 */
 	return usb_add_frame_to_usb(chan_alloc, lc3_rx_buf, sizeof(lc3_rx_buf), ts);
+}
+
+static int pipewire_add_frame(const struct stream_rx *stream, int chn, uint32_t ts)
+{
+	enum bt_audio_location chan_alloc;
+	int err;
+
+	err = get_lc3_chan_alloc_from_index(stream, chn, &chan_alloc);
+	if (err != 0) {
+		/* Not suitable for PipeWire output */
+		return err;
+	}
+	/* Route only the designated left/right stream to PipeWire */
+	if ((chan_alloc == BT_AUDIO_LOCATION_FRONT_LEFT && stream != pipewire_left_stream) ||
+	    (chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT && stream != pipewire_right_stream)) {
+		return -EIO;
+	}
+
+	return pipewire_add_frame_to_pipewire(chan_alloc, lc3_rx_buf, sizeof(lc3_rx_buf), ts);
 }
 
 static int codec_add_frame(const struct stream_rx *stream, int chn, uint32_t ts)
@@ -237,12 +264,22 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 					continue;
 				}
 			}
+			if (IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)) {
+				ret = pipewire_add_frame(stream, i, data->ts);
+				if (ret != 0) {
+					LOG_ERR("pipewire_add_frame failed: %d", ret);
+					continue;
+				}
+			}
 		} else {
 			/* If decoding failed, we clear the data to USB as it would contain
 			 * invalid data
 			 */
 			if (IS_ENABLED(CONFIG_USE_USB_AUDIO_OUTPUT)) {
 				usb_clear_frames_to_usb();
+			}
+			if (IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)) {
+				pipewire_clear_frames_to_pipewire();
 			}
 			break;
 		}
@@ -413,6 +450,26 @@ int lc3_enable(struct stream_rx *stream)
 		}
 	}
 
+	if (IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)) {
+		if ((stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_LEFT) != 0) {
+			if (pipewire_left_stream == NULL) {
+				LOG_INF("Setting PipeWire left stream to %p", stream);
+				pipewire_left_stream = stream;
+			} else {
+				LOG_WRN("Multiple left streams started for PipeWire");
+			}
+		}
+
+		if ((stream->lc3_chan_allocation & BT_AUDIO_LOCATION_FRONT_RIGHT) != 0) {
+			if (pipewire_right_stream == NULL) {
+				LOG_INF("Setting PipeWire right stream to %p", stream);
+				pipewire_right_stream = stream;
+			} else {
+				LOG_WRN("Multiple right streams started for PipeWire");
+			}
+		}
+	}
+
 	if (IS_ENABLED(CONFIG_USE_CODEC_AUDIO_OUTPUT)) {
 		const int err = hw_codec_cfg(lc3_freq_hz);
 
@@ -438,6 +495,15 @@ int lc3_disable(struct stream_rx *stream)
 		}
 		if (usb_right_stream == stream) {
 			usb_right_stream = NULL;
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)) {
+		if (pipewire_left_stream == stream) {
+			pipewire_left_stream = NULL;
+		}
+		if (pipewire_right_stream == stream) {
+			pipewire_right_stream = NULL;
 		}
 	}
 

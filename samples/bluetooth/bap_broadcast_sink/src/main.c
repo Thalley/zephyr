@@ -39,6 +39,7 @@
 #include "stream_rx.h"
 #include "usb.h"
 #include "hw_codec.h"
+#include "pipewire.h"
 
 BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
 	     "Either SCAN_SELF or SCAN_OFFLOAD must be enabled");
@@ -921,6 +922,15 @@ static int init(void)
 
 	if (IS_ENABLED(CONFIG_USE_USB_AUDIO_OUTPUT)) {
 		usb_init();
+	}
+
+	if (IS_ENABLED(CONFIG_USE_PIPEWIRE_AUDIO_OUTPUT)) {
+		const int err = pipewire_init();
+
+		if (err != 0) {
+			printk("Failed to init PipeWire: %d\n", err);
+			return err;
+		}
 	}
 
 	return 0;

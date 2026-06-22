@@ -65,6 +65,46 @@ config USE_USB_AUDIO_OUTPUT
 	  phone or PC as a USB-in device (such as a USB microphone).
 	  USB audio only supports a single audio channel.
 
+config USE_PIPEWIRE_AUDIO_OUTPUT
+	bool "Use PipeWire audio as output"
+	depends on ENABLE_LC3
+	depends on ARCH_POSIX
+	depends on EXTERNAL_LIBC
+	depends on BOARD_NATIVE_SIM_NATIVE_64
+	help
+	  Enables PipeWire audio as output when running on native_sim/native/64.
+	  Decoded Bluetooth audio is routed to a PipeWire playback stream on the host.
+	  This option co-exists with other output options.
+
+if USE_PIPEWIRE_AUDIO_OUTPUT
+
+config BROADCAST_SINK_PIPEWIRE_TARGET
+	string "Default PipeWire sink target"
+	default ""
+	help
+	  Optional default PipeWire target object for playback. Leave empty to
+	  let PipeWire choose the default sink. May be overridden at runtime
+	  with --bt-broadcast-sink-pcm-sink=<node>.
+
+config BROADCAST_SINK_PIPEWIRE_LATENCY
+	string "Default PipeWire latency"
+	default "480/48000"
+	help
+	  Default PipeWire node latency for playback. The format is
+	  PipeWire's usual quantum/rate string, for example 480/48000 for
+	  10 ms. May be overridden at runtime with
+	  --bt-broadcast-sink-pcm-latency=<latency>.
+
+config BROADCAST_SINK_PIPEWIRE_BUFFER_MS
+	int "PipeWire host buffer size in milliseconds"
+	default 60
+	range 10 500
+	help
+	  Size of the host-side PCM ring buffer used between the Zephyr LC3
+	  decoder thread and the PipeWire playback callback.
+
+endif # USE_PIPEWIRE_AUDIO_OUTPUT
+
 config USE_CODEC_AUDIO_OUTPUT
 	bool "Use Codec Audio as output"
 	depends on ENABLE_LC3
