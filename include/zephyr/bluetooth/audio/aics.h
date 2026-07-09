@@ -546,6 +546,31 @@ struct bt_aics *bt_aics_client_free_instance_get(void);
  */
 void bt_aics_client_cb_register(struct bt_aics *inst, struct bt_aics_cb *cb);
 
+/**
+ * @brief Convert an AICS gain mode to a human-readable string.
+ *
+ * @param mode  The gain mode value (one of the @ref BT_AICS_MODE_MANUAL_ONLY,
+ *              @ref BT_AICS_MODE_AUTO_ONLY, @ref BT_AICS_MODE_MANUAL or
+ *              @ref BT_AICS_MODE_AUTO constants).
+ *
+ * @return A string representation of the gain mode.
+ */
+static inline const char *bt_aics_mode_str(uint8_t mode)
+{
+	switch (mode) {
+	case BT_AICS_MODE_MANUAL_ONLY:
+		return "Manual only";
+	case BT_AICS_MODE_AUTO_ONLY:
+		return "Auto only";
+	case BT_AICS_MODE_MANUAL:
+		return "Manual";
+	case BT_AICS_MODE_AUTO:
+		return "Auto";
+	default:
+		return "Unknown";
+	}
+}
+
 #ifdef __cplusplus
 }
 #endif
