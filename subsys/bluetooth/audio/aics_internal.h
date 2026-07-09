@@ -41,6 +41,22 @@
 #define BT_AICS_INPUT_MODE_IMMUTABLE(gain_mode) \
 	((gain_mode) == BT_AICS_MODE_MANUAL_ONLY || (gain_mode) == BT_AICS_MODE_AUTO_ONLY)
 
+static inline const char *bt_aics_mode_str(uint8_t mode)
+{
+	switch (mode) {
+	case BT_AICS_MODE_MANUAL_ONLY:
+		return "manual only";
+	case BT_AICS_MODE_AUTO_ONLY:
+		return "auto only";
+	case BT_AICS_MODE_MANUAL:
+		return "manual";
+	case BT_AICS_MODE_AUTO:
+		return "auto";
+	default:
+		return "unknown";
+	}
+}
+
 struct bt_aics_control {
 	uint8_t opcode;
 	uint8_t counter;
