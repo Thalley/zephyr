@@ -180,7 +180,60 @@ static void monitor_send(const void *data, size_t len)
 		poll_out(*buf++);
 	}
 }
-#endif /* CONFIG_BT_DEBUG_MONITOR_UART */
+#elif defined(CONFIG_BT_DEBUG_MONITOR_NATIVE)
+
+#include <cmdline.h>
+#include <posix_native_task.h>
+#include "monitor_native_bottom.h"
+
+static char *monitor_native_file_path;
+
+static void poll_out(char c)
+{
+	monitor_native_write(&c, sizeof(c));
+}
+
+static void monitor_send(const void *data, size_t len)
+{
+	monitor_native_write(data, len);
+}
+
+static void monitor_opts_register(void)
+{
+	static struct args_struct_t monitor_opts[] = {
+		{
+			.option = "bt_mon_file",
+			.name = "path",
+			.type = 's',
+			.dest = &monitor_native_file_path,
+			.descript = "BT monitor output file path (default: \""
+				    CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME "\")"
+		},
+		ARG_TABLE_ENDMARKER
+	};
+
+	native_add_command_line_opts(monitor_opts);
+}
+
+static void monitor_file_open(void)
+{
+	const char *path = monitor_native_file_path != NULL
+			   ? monitor_native_file_path
+			   : CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME;
+
+	monitor_native_open(path);
+}
+
+static void monitor_file_close(void)
+{
+	monitor_native_close();
+}
+
+NATIVE_TASK(monitor_opts_register, PRE_BOOT_1, 10);
+NATIVE_TASK(monitor_file_open, PRE_BOOT_2, 10);
+NATIVE_TASK(monitor_file_close, ON_EXIT, 10);
+
+#endif /* BT monitor backend */
 
 static void encode_drops(struct bt_monitor_hdr *hdr, uint8_t type,
 			 atomic_t *val)
@@ -417,7 +470,7 @@ static int bt_monitor_init(void)
 	uart_irq_rx_disable(monitor_dev);
 	uart_irq_tx_disable(monitor_dev);
 #endif /* CONFIG_UART_INTERRUPT_DRIVEN */
-#endif /* CONFIG_BT_DEBUG_MONITOR_UART */
+#endif /* BT monitor backend */
 
 #if !defined(CONFIG_UART_CONSOLE) && !defined(CONFIG_RTT_CONSOLE) && !defined(CONFIG_LOG_PRINTK)
 	__printk_hook_install(monitor_console_out);

@@ -357,6 +357,43 @@ config BT_DEBUG_MONITOR_RTT_BUFFER_SIZE
 
 endif # BT_DEBUG_MONITOR_RTT
 
+config BT_DEBUG_MONITOR_NATIVE
+	bool "Monitor protocol to native host file"
+	depends on ARCH_POSIX
+	select LOG
+	select BT_MONITOR
+	help
+	  Write the Bluetooth monitor protocol to a file on the host
+	  filesystem. This option is only available for native POSIX-based
+	  targets such as native_sim and babblesim (bsim) boards.
+
+	  The output file path defaults to
+	  CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME but can be overridden at
+	  runtime with the --bt_mon_file command line argument.
+
+	  The resulting file contains the Bluetooth monitor wire protocol,
+	  which is the same format used by the UART backend. It can be
+	  analyzed with the btmon tool from BlueZ:
+
+	    btmon -s bt_monitor.log
+
+	  For live capture during a test run, use a named pipe:
+
+	    mkfifo /tmp/btmon.fifo && btmon -s /tmp/btmon.fifo &
+	    ./bs_<board>_... --bt_mon_file=/tmp/btmon.fifo
+
+if BT_DEBUG_MONITOR_NATIVE
+
+config BT_DEBUG_MONITOR_NATIVE_FILENAME
+	string "Default BT monitor output file path"
+	default "bt_monitor.log"
+	help
+	  Default path for the Bluetooth monitor output file. This value
+	  can be overridden at runtime with the --bt_mon_file command line
+	  argument.
+
+endif # BT_DEBUG_MONITOR_NATIVE
+
 endchoice # Bluetooth debug type
 
 config BT_LONG_WQ
