@@ -372,9 +372,10 @@ config BT_DEBUG_MONITOR_NATIVE
 
 	    btmon -r <path>
 
-	  On bsim boards the default output path is chosen automatically:
+	  On bsim boards the default output path is chosen automatically
+	  using the BSIM_OUT_PATH environment variable:
 
-	    ../results/<sim_id>/bt_monitor_d<N>.log
+	    ${BSIM_OUT_PATH}/results/<sim_id>/bt_monitor_d<N>.log
 
 	  This places the file in the same directory where the bsim phy
 	  stores its d_2G4_* result files.  On other targets (native_sim)
@@ -395,9 +396,11 @@ config BT_DEBUG_MONITOR_NATIVE_FILENAME
 	default ""
 	help
 	  When set to a non-empty string, this path is used as the default
-	  output file instead of the automatically computed bsim results path
-	  or /tmp/bt_monitor.log.  The value can still be overridden at
-	  runtime with the --bt_mon_file command line argument.
+	  output file instead of the automatically computed
+	  ${BSIM_OUT_PATH}/results/<sim_id>/bt_monitor_d<N>.log path on bsim
+	  boards, or /tmp/bt_monitor.log on other targets.  The value can
+	  still be overridden at runtime with the --bt_mon_file command line
+	  argument.
 
 	  An absolute path is recommended to avoid confusion about the
 	  working directory when the binary is launched.

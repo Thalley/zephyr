@@ -19,11 +19,12 @@
  * When built for a babblesim (bsim) board, if no explicit output path is
  * given the file is placed in the standard bsim results directory:
  *
- *   ../results/<sim_id>/bt_monitor.log
+ *   ${BSIM_OUT_PATH}/results/<sim_id>/bt_monitor_d<N>.log
  *
- * This is the same location where the bsim phy places its d_2G4_* dump files.
- * The device number is appended to the filename when there is more than one
- * device in the simulation, so each device gets its own output file.
+ * The path is constructed using the BSIM_OUT_PATH environment variable.
+ * If BSIM_OUT_PATH is not set, the fallback is the relative path
+ * ../results/<sim_id>/bt_monitor_d<N>.log (resolved from the
+ * ${BSIM_OUT_PATH}/bin/ working directory that bsim test scripts use).
  *
  * On non-bsim targets (native_sim) the fallback is /tmp/bt_monitor.log.
  */
@@ -36,6 +37,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <nsi_tracing.h>
@@ -203,27 +205,40 @@ void monitor_native_open(const char *path)
 {
 #if defined(HAVE_BSIM_ARGS)
 	/* When no explicit path was provided, derive the output path from the
-	 * bsim simulation ID so the file lands in the standard results directory:
-	 *   ../results/<sim_id>/bt_monitor_d<N>.log
-	 * (relative to the ${BSIM_OUT_PATH}/bin/ directory where bsim executables run)
+	 * BSIM_OUT_PATH environment variable and the bsim simulation ID so the
+	 * file lands in the standard results directory:
+	 *   ${BSIM_OUT_PATH}/results/<sim_id>/bt_monitor_d<N>.log
+	 *
+	 * If BSIM_OUT_PATH is not set, fall back to the relative path
+	 * ../results/<sim_id>/bt_monitor_d<N>.log (works when the binary is
+	 * invoked from ${BSIM_OUT_PATH}/bin/ as bsim test scripts do).
 	 */
 	char auto_path[512];
 
 	if (path == NULL) {
 		const char *sim_id = bsim_args_get_simid();
 		unsigned int dev_nbr = bsim_args_get_global_device_nbr();
+		const char *bsim_out = getenv("BSIM_OUT_PATH");
+
+		/* Fall back to relative path if BSIM_OUT_PATH is not set.
+		 * This works when the binary is invoked from
+		 * ${BSIM_OUT_PATH}/bin/ as bsim test scripts do.
+		 */
+		if (bsim_out == NULL || bsim_out[0] == '\0') {
+			bsim_out = "..";
+		}
 
 		/* Create the results directory if it does not exist yet.
 		 * The bsim phy normally creates it, but our PRE_BOOT_2 hook
 		 * may run before the phy directory is ready.
 		 */
 		(void)snprintf(auto_path, sizeof(auto_path),
-			       "../results/%s", sim_id);
+			       "%s/results/%s", bsim_out, sim_id);
 		(void)mkdir(auto_path, 0755);
 
 		(void)snprintf(auto_path, sizeof(auto_path),
-			       "../results/%s/bt_monitor_d%u.log",
-			       sim_id, dev_nbr);
+			       "%s/results/%s/bt_monitor_d%u.log",
+			       bsim_out, sim_id, dev_nbr);
 		path = auto_path;
 	}
 #else
