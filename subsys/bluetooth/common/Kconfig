@@ -371,26 +371,26 @@ config BT_DEBUG_MONITOR_NATIVE
 	  CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME but can be overridden at
 	  runtime with the --bt_mon_file command line argument.
 
-	  The resulting file contains the Bluetooth monitor wire protocol,
-	  which is the same format used by the UART backend. It can be
-	  analyzed with the btmon tool from BlueZ:
+	  The resulting file is written in btsnoop format (datalink type
+	  HCI_MONITOR) and can be analyzed with the btmon tool from BlueZ:
 
-	    btmon -s bt_monitor.log
+	    btmon -r /tmp/bt_monitor.log
 
 	  For live capture during a test run, use a named pipe:
 
-	    mkfifo /tmp/btmon.fifo && btmon -s /tmp/btmon.fifo &
+	    mkfifo /tmp/btmon.fifo && btmon -r /tmp/btmon.fifo &
 	    ./bs_<board>_... --bt_mon_file=/tmp/btmon.fifo
 
 if BT_DEBUG_MONITOR_NATIVE
 
 config BT_DEBUG_MONITOR_NATIVE_FILENAME
 	string "Default BT monitor output file path"
-	default "bt_monitor.log"
+	default "/tmp/bt_monitor.log"
 	help
-	  Default path for the Bluetooth monitor output file. This value
-	  can be overridden at runtime with the --bt_mon_file command line
-	  argument.
+	  Default path for the Bluetooth monitor output file. An absolute
+	  path is recommended to avoid confusion about the working directory
+	  when the binary is launched. This value can be overridden at
+	  runtime with the --bt_mon_file command line argument.
 
 endif # BT_DEBUG_MONITOR_NATIVE
 
