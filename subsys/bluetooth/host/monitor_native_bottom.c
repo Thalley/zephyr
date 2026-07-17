@@ -42,8 +42,14 @@
 #include <sys/stat.h>
 #include <nsi_tracing.h>
 
-#if __has_include("bsim_args_runner.h")
-#include "bsim_args_runner.h"
+#if defined(CONFIG_SOC_SERIES_BSIM_NRFXX)
+/*
+ * These accessors are provided by boards/native/nrf_bsim/common/
+ * bsim_args_runner.c in the native simulator runner context.
+ * Use local declarations here to avoid dependence on include-path setup.
+ */
+char *bsim_args_get_simid(void);
+unsigned int bsim_args_get_global_device_nbr(void);
 #define HAVE_BSIM_ARGS 1
 #endif
 
