@@ -14,7 +14,18 @@
  * btsnoop file format (datalink type 2001 = HCI_MONITOR) so that the
  * resulting file can be opened directly with:
  *
- *   btmon -r /tmp/bt_monitor.log
+ *   btmon -r <path>
+ *
+ * When built for a babblesim (bsim) board, if no explicit output path is
+ * given the file is placed in the standard bsim results directory:
+ *
+ *   ../results/<sim_id>/bt_monitor.log
+ *
+ * This is the same location where the bsim phy places its d_2G4_* dump files.
+ * The device number is appended to the filename when there is more than one
+ * device in the simulation, so each device gets its own output file.
+ *
+ * On non-bsim targets (native_sim) the fallback is /tmp/bt_monitor.log.
  */
 
 /* Note: This is used only for interaction with the host C library, and is
@@ -26,7 +37,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <nsi_tracing.h>
+
+#if __has_include("bsim_args_runner.h")
+#include "bsim_args_runner.h"
+#define HAVE_BSIM_ARGS 1
+#endif
 
 /* BT monitor wire-protocol constants (kept local; cannot include monitor.h
  * here because that header is compiled in the Zephyr context).
@@ -184,6 +201,39 @@ static void flush_frame(void)
 
 void monitor_native_open(const char *path)
 {
+#if defined(HAVE_BSIM_ARGS)
+	/* When no explicit path was provided, derive the output path from the
+	 * bsim simulation ID so the file lands in the standard results directory:
+	 *   ../results/<sim_id>/bt_monitor_d<N>.log
+	 * (relative to the ${BSIM_OUT_PATH}/bin/ directory where bsim executables run)
+	 */
+	char auto_path[512];
+
+	if (path == NULL) {
+		const char *sim_id = bsim_args_get_simid();
+		unsigned int dev_nbr = bsim_args_get_global_device_nbr();
+
+		/* Create the results directory if it does not exist yet.
+		 * The bsim phy normally creates it, but our PRE_BOOT_2 hook
+		 * may run before the phy directory is ready.
+		 */
+		(void)snprintf(auto_path, sizeof(auto_path),
+			       "../results/%s", sim_id);
+		(void)mkdir(auto_path, 0755);
+
+		(void)snprintf(auto_path, sizeof(auto_path),
+			       "../results/%s/bt_monitor_d%u.log",
+			       sim_id, dev_nbr);
+		path = auto_path;
+	}
+#else
+	char auto_path[] = "/tmp/bt_monitor.log";
+
+	if (path == NULL) {
+		path = auto_path;
+	}
+#endif
+
 	monitor_file = fopen(path, "wb");
 	if (monitor_file == NULL) {
 		nsi_print_warning("BT monitor: failed to open '%s'\n", path);

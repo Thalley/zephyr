@@ -217,9 +217,15 @@ static void monitor_opts_register(void)
 
 static void monitor_file_open(void)
 {
-	const char *path = monitor_native_file_path != NULL
-			   ? monitor_native_file_path
-			   : CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME;
+	const char *path = monitor_native_file_path;
+
+	/* If no path was given on the command line, fall back to the Kconfig
+	 * default.  An empty string means "let the bottom layer decide", which
+	 * on bsim boards places the file in the standard results directory.
+	 */
+	if (path == NULL && strlen(CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME) > 0U) {
+		path = CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME;
+	}
 
 	monitor_native_open(path);
 }

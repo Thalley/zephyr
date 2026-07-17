@@ -367,14 +367,21 @@ config BT_DEBUG_MONITOR_NATIVE
 	  filesystem. This option is only available for native POSIX-based
 	  targets such as native_sim and babblesim (bsim) boards.
 
-	  The output file path defaults to
-	  CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME but can be overridden at
-	  runtime with the --bt_mon_file command line argument.
-
-	  The resulting file is written in btsnoop format (datalink type
+	  The output file is written in btsnoop format (datalink type
 	  HCI_MONITOR) and can be analyzed with the btmon tool from BlueZ:
 
-	    btmon -r /tmp/bt_monitor.log
+	    btmon -r <path>
+
+	  On bsim boards the default output path is chosen automatically:
+
+	    ../results/<sim_id>/bt_monitor_d<N>.log
+
+	  This places the file in the same directory where the bsim phy
+	  stores its d_2G4_* result files.  On other targets (native_sim)
+	  the fallback path is /tmp/bt_monitor.log.
+
+	  The path can be overridden at runtime with --bt_mon_file, or at
+	  build time via CONFIG_BT_DEBUG_MONITOR_NATIVE_FILENAME.
 
 	  For live capture during a test run, use a named pipe:
 
@@ -384,13 +391,16 @@ config BT_DEBUG_MONITOR_NATIVE
 if BT_DEBUG_MONITOR_NATIVE
 
 config BT_DEBUG_MONITOR_NATIVE_FILENAME
-	string "Default BT monitor output file path"
-	default "/tmp/bt_monitor.log"
+	string "Override default BT monitor output file path"
+	default ""
 	help
-	  Default path for the Bluetooth monitor output file. An absolute
-	  path is recommended to avoid confusion about the working directory
-	  when the binary is launched. This value can be overridden at
+	  When set to a non-empty string, this path is used as the default
+	  output file instead of the automatically computed bsim results path
+	  or /tmp/bt_monitor.log.  The value can still be overridden at
 	  runtime with the --bt_mon_file command line argument.
+
+	  An absolute path is recommended to avoid confusion about the
+	  working directory when the binary is launched.
 
 endif # BT_DEBUG_MONITOR_NATIVE
 
