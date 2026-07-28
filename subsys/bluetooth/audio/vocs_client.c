@@ -672,6 +672,28 @@ struct bt_vocs *bt_vocs_client_free_instance_get(void)
 	return NULL;
 }
 
+void bt_vocs_client_free_instance(struct bt_vocs *vocs)
+{
+	struct bt_vocs_client *inst;
+
+	if (vocs == NULL || !vocs->client_instance) {
+		return;
+	}
+
+	inst = CONTAINER_OF(vocs, struct bt_vocs_client, vocs);
+
+	ARRAY_FOR_EACH_PTR(insts, vocs_inst) {
+		if (vocs_inst == inst) {
+			vocs_client_reset(inst);
+			inst->cb = NULL;
+			inst->vocs.client_instance = false;
+			atomic_clear_bit(inst->flags, BT_VOCS_CLIENT_FLAG_BUSY);
+			atomic_clear_bit(inst->flags, BT_VOCS_CLIENT_FLAG_ACTIVE);
+			break;
+		}
+	}
+}
+
 int bt_vocs_client_conn_get(const struct bt_vocs *vocs, struct bt_conn **conn)
 {
 	struct bt_vocs_client *inst;

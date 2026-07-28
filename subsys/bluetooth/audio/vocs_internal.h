@@ -109,5 +109,6 @@ int bt_vocs_client_location_get(struct bt_vocs_client *inst);
 int bt_vocs_client_location_set(struct bt_vocs_client *inst, uint32_t location);
 int bt_vocs_client_description_get(struct bt_vocs_client *inst);
 int bt_vocs_client_description_set(struct bt_vocs_client *inst, const char *description);
+void bt_vocs_client_free_instance(struct bt_vocs *vocs);
 
 #endif /* ZEPHYR_INCLUDE_BLUETOOTH_AUDIO_VOCS_INTERNAL_ */

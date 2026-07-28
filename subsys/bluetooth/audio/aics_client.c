@@ -773,6 +773,24 @@ struct bt_aics *bt_aics_client_free_instance_get(void)
 	return NULL;
 }
 
+void bt_aics_client_free_instance(struct bt_aics *inst)
+{
+	if (inst == NULL || !inst->client_instance) {
+		return;
+	}
+
+	ARRAY_FOR_EACH_PTR(aics_insts, aics) {
+		if (aics == inst) {
+			aics_client_reset(inst);
+			inst->cli.cb = NULL;
+			inst->client_instance = false;
+			atomic_clear_bit(inst->cli.flags, BT_AICS_CLIENT_FLAG_BUSY);
+			atomic_clear_bit(inst->cli.flags, BT_AICS_CLIENT_FLAG_ACTIVE);
+			break;
+		}
+	}
+}
+
 int bt_aics_client_conn_get(const struct bt_aics *aics, struct bt_conn **conn)
 {
 	if (aics == NULL) {

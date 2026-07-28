@@ -149,5 +149,6 @@ int bt_aics_client_gain_set(struct bt_aics *inst, int8_t gain);
 int bt_aics_client_description_get(struct bt_aics *inst);
 int bt_aics_client_description_set(struct bt_aics *inst,
 				   const char *description);
+void bt_aics_client_free_instance(struct bt_aics *inst);
 
 #endif /* ZEPHYR_INCLUDE_BLUETOOTH_AUDIO_AICS_INTERNAL_ */
