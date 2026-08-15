@@ -1337,7 +1337,6 @@ int bt_bap_stream_enable(struct bt_bap_stream *stream, const uint8_t meta[], siz
 	return 0;
 }
 
-#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 int bt_bap_stream_stop(struct bt_bap_stream *stream)
 {
 	int err;
@@ -1351,15 +1350,18 @@ int bt_bap_stream_stop(struct bt_bap_stream *stream)
 		return -EBADMSG;
 	}
 
-	err = bt_bap_unicast_client_stop(stream);
-	if (err != 0) {
-		LOG_DBG("Stopping stream failed: %d", err);
-		return err;
+	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)) {
+		err = bt_bap_unicast_client_stop(stream);
+		if (err != 0) {
+			LOG_DBG("Stopping stream failed: %d", err);
+			return err;
+		}
+
+		return 0;
 	}
 
-	return 0;
+	return -ENOTSUP;
 }
-#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 #endif /* CONFIG_BT_BAP_UNICAST_CLIENT */
 
 int bt_bap_stream_reconfig(struct bt_bap_stream *stream, const struct bt_audio_codec_cfg *codec_cfg)
