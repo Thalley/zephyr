@@ -995,6 +995,7 @@ static void enable_cb(struct bt_bap_stream *stream, enum bt_bap_ascs_rsp_code rs
 		       stream, rsp_code, reason);
 }
 
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 static void start_cb(struct bt_bap_stream *stream, enum bt_bap_ascs_rsp_code rsp_code,
 		     enum bt_bap_ascs_reason reason)
 {
@@ -1008,6 +1009,7 @@ static void stop_cb(struct bt_bap_stream *stream, enum bt_bap_ascs_rsp_code rsp_
 	bt_shell_print("stream %p stop operation rsp_code %u reason %u",
 		       stream, rsp_code, reason);
 }
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 
 static void disable_cb(struct bt_bap_stream *stream, enum bt_bap_ascs_rsp_code rsp_code,
 		       enum bt_bap_ascs_reason reason)
@@ -1037,8 +1039,10 @@ static struct bt_bap_unicast_client_cb unicast_client_cbs = {
 	.config = config_cb,
 	.qos = qos_cb,
 	.enable = enable_cb,
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 	.start = start_cb,
 	.stop = stop_cb,
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 	.disable = disable_cb,
 	.metadata = metadata_cb,
 	.release = release_cb,
