@@ -127,16 +127,18 @@ struct bt_cap_initiator_cb {
 	 * bt_cap_initiator_unicast_audio_start() has completed.
 	 *
 	 * All streams supplied to bt_cap_initiator_unicast_audio_start() are in the
-	 * @ref BT_BAP_EP_STATE_CODEC_CONFIGURED state or better, with the requested codec
+	 * @ref BT_BAP_EP_STATE_CODEC_CONFIGURED state or higher, with the requested codec
 	 * configuration.
 	 *
 	 * This is only called if at least one Config Codec operation was sent to a CAP acceptor,
 	 * i.e. it is not called if all streams already had the requested codec configuration.
 	 *
 	 * The unicast group may be reconfigured with bt_cap_unicast_group_reconfig() from this
-	 * callback, as the QoS Configuration subprocedure has not been started yet. It is not
-	 * possible to start a new CAP procedure from this callback, as the current procedure is
-	 * still in progress.
+	 * callback, as the QoS Configuration subprocedure has not been started yet. This is only
+	 * possible if none of the streams in the unicast group have been connected earlier, as the
+	 * unicast group cannot be reconfigured once a CIS has been established. It is not possible
+	 * to start a new CAP procedure from this callback, as the current procedure is still in
+	 * progress.
 	 */
 	void (*unicast_start_codec_configured)(void);
 
@@ -145,7 +147,7 @@ struct bt_cap_initiator_cb {
 	 * completed.
 	 *
 	 * All streams supplied to bt_cap_initiator_unicast_audio_start() are in the
-	 * @ref BT_BAP_EP_STATE_QOS_CONFIGURED state or better, with the QoS configuration of the
+	 * @ref BT_BAP_EP_STATE_QOS_CONFIGURED state or higher, with the QoS configuration of the
 	 * unicast group.
 	 *
 	 * This is only called if at least one Config QoS operation was sent to a CAP acceptor, i.e.
@@ -157,7 +159,7 @@ struct bt_cap_initiator_cb {
 	 * @brief The Enable subprocedure of bt_cap_initiator_unicast_audio_start() has completed.
 	 *
 	 * All streams supplied to bt_cap_initiator_unicast_audio_start() are in the
-	 * @ref BT_BAP_EP_STATE_ENABLING state or better, with the requested metadata.
+	 * @ref BT_BAP_EP_STATE_ENABLING state or higher, with the requested metadata.
 	 *
 	 * This is only called if at least one Enable operation was sent to a CAP acceptor, i.e. it
 	 * is not called if all streams were already enabled with the requested metadata.
