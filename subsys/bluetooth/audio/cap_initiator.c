@@ -2046,7 +2046,6 @@ void bt_cap_initiator_enabled(struct bt_cap_stream *cap_stream)
 		cap_initiator_unicast_audio_proc_complete(active_proc);
 	} else {
 		active_proc->subproc_initiated = true;
-
 		bt_cap_common_unlock_proc();
 	}
 }
@@ -2857,8 +2856,8 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(next_bap_stream->conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
-			active_proc->subproc_initiated = true;
 			/* else wait for server notification*/
+			active_proc->subproc_initiated = true;
 			bt_cap_common_unlock_proc();
 		}
 	}
