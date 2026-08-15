@@ -1350,7 +1350,12 @@ int bt_bap_stream_stop(struct bt_bap_stream *stream)
 		return -EBADMSG;
 	}
 
-	err = bt_bap_unicast_client_stop(stream);
+	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)) {
+		err = bt_bap_unicast_client_stop(stream);
+	} else {
+		err = -EOPNOTSUPP;
+	}
+
 	if (err != 0) {
 		LOG_DBG("Stopping stream failed: %d", err);
 		return err;
@@ -1452,7 +1457,7 @@ int bt_bap_stream_start(struct bt_bap_stream *stream)
 	}
 
 	role = conn_get_role(conn);
-	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT) && role == BT_CONN_ROLE_CENTRAL) {
+	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC) && role == BT_CONN_ROLE_CENTRAL) {
 		err = bt_bap_unicast_client_start(stream);
 	} else if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_SERVER) && role == BT_CONN_ROLE_PERIPHERAL) {
 		err = bt_bap_unicast_server_start(stream);
