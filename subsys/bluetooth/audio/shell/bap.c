@@ -930,8 +930,6 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 
 static void discover_all(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 {
-	ARG_UNUSED(conn);
-
 	/* Sinks discovery complete, now discover sources */
 	if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC) && dir == BT_AUDIO_DIR_SINK) {
 		dir = BT_AUDIO_DIR_SOURCE;
@@ -941,6 +939,8 @@ static void discover_all(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 		if (err != 0) {
 			bt_shell_error("bt_bap_unicast_client_discover err %d", err);
 		}
+	} else {
+		discover_cb(conn, err, dir);
 	}
 }
 
@@ -1088,6 +1088,7 @@ static int cmd_discover(const struct shell *sh, size_t argc, char *argv[])
 	if (argc > 1) {
 		if (!strcmp(argv[1], "sink")) {
 			unicast_client_cbs.discover = discover_cb;
+			dir = BT_AUDIO_DIR_SINK;
 		} else if (!strcmp(argv[1], "source")) {
 			unicast_client_cbs.discover = discover_cb;
 			dir = BT_AUDIO_DIR_SOURCE;
