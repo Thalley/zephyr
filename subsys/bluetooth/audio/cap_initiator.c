@@ -2734,7 +2734,6 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 		struct bt_cap_initiator_proc_param *proc_param;
 		struct bt_cap_stream *next_cap_stream;
 		struct bt_bap_stream *next_bap_stream;
-		int err;
 
 		bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_STOP);
 
@@ -2756,18 +2755,17 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 		proc_param->in_progress = true;
 
 		if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)) {
-			err = bt_bap_stream_stop(next_bap_stream);
-		} else {
-			err = -ENOTSUP;
-		}
-		if (err != 0) {
-			LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
+			int err = bt_bap_stream_stop(next_bap_stream);
 
-			bt_cap_common_abort_proc(next_bap_stream->conn, err);
-			cap_initiator_unicast_audio_proc_complete(active_proc);
-		} else {
-			/* else wait for server notification*/
-			bt_cap_common_unlock_proc();
+			if (err != 0) {
+				LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
+
+				bt_cap_common_abort_proc(next_bap_stream->conn, err);
+				cap_initiator_unicast_audio_proc_complete(active_proc);
+			} else {
+				/* else wait for server notification*/
+				bt_cap_common_unlock_proc();
+			}
 		}
 	}
 }
@@ -2818,7 +2816,6 @@ void bt_cap_initiator_stopped(struct bt_cap_stream *cap_stream)
 		struct bt_cap_initiator_proc_param *proc_param;
 		struct bt_cap_stream *next_cap_stream;
 		struct bt_bap_stream *next_bap_stream;
-		int err;
 
 		proc_param = get_next_proc_param(active_proc);
 		if (proc_param != NULL) {
@@ -2829,17 +2826,16 @@ void bt_cap_initiator_stopped(struct bt_cap_stream *cap_stream)
 			proc_param->in_progress = true;
 
 			if (IS_ENABLED(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)) {
-				err = bt_bap_stream_stop(next_bap_stream);
-			} else {
-				err = -ENOTSUP;
-			}
-			if (err != 0) {
-				LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
+				int err = bt_bap_stream_stop(next_bap_stream);
 
-				bt_cap_common_abort_proc(next_bap_stream->conn, err);
-				cap_initiator_unicast_audio_proc_complete(active_proc);
+				if (err != 0) {
+					LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
 
-				return;
+					bt_cap_common_abort_proc(next_bap_stream->conn, err);
+					cap_initiator_unicast_audio_proc_complete(active_proc);
+
+					return;
+				}
 			}
 		} /* else await notification from server */
 	} else {
