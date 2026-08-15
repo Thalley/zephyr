@@ -1358,6 +1358,72 @@ bool bt_cap_initiator_valid_unicast_audio_start_param(
 	return true;
 }
 
+static void cap_initiator_unicast_subproc_complete(const struct bt_cap_common_proc *active_proc)
+{
+	if (!active_proc->subproc_initiated) {
+		/* The subprocedure was skipped as all streams were already in the requested state,
+		 * so we do not notify the application
+		 */
+		return;
+	}
+
+	if (IS_ENABLED(CONFIG_BT_CAP_HANDOVER) && bt_cap_common_handover_is_active()) {
+		/* The procedure was not started by the application, so we do not notify the
+		 * application about the subprocedures
+		 */
+		return;
+	}
+
+	if (cap_cb == NULL) {
+		return;
+	}
+
+	switch (active_proc->subproc_type) {
+	case BT_CAP_COMMON_SUBPROC_TYPE_CODEC_CONFIG:
+		if (cap_cb->unicast_start_codec_configured != NULL) {
+			cap_cb->unicast_start_codec_configured();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_QOS_CONFIG:
+		if (cap_cb->unicast_start_qos_configured != NULL) {
+			cap_cb->unicast_start_qos_configured();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_ENABLE:
+		if (cap_cb->unicast_start_enabled != NULL) {
+			cap_cb->unicast_start_enabled();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_CONNECT:
+		if (cap_cb->unicast_start_connected != NULL) {
+			cap_cb->unicast_start_connected();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_START:
+		if (cap_cb->unicast_start_started != NULL) {
+			cap_cb->unicast_start_started();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_DISABLE:
+		if (cap_cb->unicast_stop_disabled != NULL) {
+			cap_cb->unicast_stop_disabled();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_STOP:
+		if (cap_cb->unicast_stop_stopped != NULL) {
+			cap_cb->unicast_stop_stopped();
+		}
+		break;
+	case BT_CAP_COMMON_SUBPROC_TYPE_RELEASE:
+		if (cap_cb->unicast_stop_released != NULL) {
+			cap_cb->unicast_stop_released();
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 void cap_initiator_unicast_audio_proc_complete(struct bt_cap_common_proc *active_proc)
 {
 	enum bt_cap_common_proc_type proc_type;
@@ -1526,6 +1592,8 @@ cap_initiator_unicast_audio_configure(struct bt_cap_common_proc *active_proc,
 	}
 	if (err != 0) {
 		LOG_DBG("Failed to config stream %p: %d", proc_param->stream, err);
+	} else {
+		active_proc->subproc_initiated = true;
 	}
 
 	return err;
@@ -1660,6 +1728,7 @@ void bt_cap_initiator_codec_configured(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
+			active_proc->subproc_initiated = true;
 			bt_cap_common_unlock_proc();
 		}
 
@@ -1702,6 +1771,7 @@ void bt_cap_initiator_codec_configured(struct bt_cap_stream *cap_stream)
 	/* All streams in the procedure share the same unicast group, so we just
 	 * use the reference from the first stream
 	 */
+	cap_initiator_unicast_subproc_complete(active_proc);
 	bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_QOS_CONFIG);
 	proc_param = get_next_proc_param(active_proc);
 	if (proc_param == NULL) {
@@ -1752,6 +1822,8 @@ void bt_cap_initiator_codec_configured(struct bt_cap_stream *cap_stream)
 
 			break;
 		}
+
+		active_proc->subproc_initiated = true;
 	}
 
 	bt_cap_common_unlock_proc();
@@ -1808,6 +1880,7 @@ void bt_cap_initiator_qos_configured(struct bt_cap_stream *cap_stream)
 			return;
 		}
 
+		cap_initiator_unicast_subproc_complete(active_proc);
 		bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_ENABLE);
 		proc_param = get_next_proc_param(active_proc);
 		if (proc_param == NULL) {
@@ -1837,6 +1910,8 @@ void bt_cap_initiator_qos_configured(struct bt_cap_stream *cap_stream)
 
 			return;
 		}
+
+		active_proc->subproc_initiated = true;
 	} else if (bt_cap_common_subproc_is_type(BT_CAP_COMMON_SUBPROC_TYPE_RELEASE)) {
 		struct bt_cap_initiator_proc_param *proc_param;
 		struct bt_cap_stream *next_cap_stream;
@@ -1860,6 +1935,8 @@ void bt_cap_initiator_qos_configured(struct bt_cap_stream *cap_stream)
 
 			return;
 		}
+
+		active_proc->subproc_initiated = true;
 	}
 
 	bt_cap_common_unlock_proc();
@@ -1925,12 +2002,14 @@ void bt_cap_initiator_enabled(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(next_bap_stream->conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
+			active_proc->subproc_initiated = true;
 			bt_cap_common_unlock_proc();
 		}
 
 		return;
 	}
 
+	cap_initiator_unicast_subproc_complete(active_proc);
 	bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_CONNECT);
 	proc_param = get_next_proc_param(active_proc);
 	if (proc_param == NULL) {
@@ -1966,6 +2045,7 @@ void bt_cap_initiator_enabled(struct bt_cap_stream *cap_stream)
 		bt_cap_common_abort_proc(bap_stream->conn, err);
 		cap_initiator_unicast_audio_proc_complete(active_proc);
 	} else {
+		active_proc->subproc_initiated = true;
 
 		bt_cap_common_unlock_proc();
 	}
@@ -2034,6 +2114,8 @@ void bt_cap_initiator_connected(struct bt_cap_stream *cap_stream)
 			if (err == 0 || err == -EALREADY) {
 				if (err == -EALREADY) {
 					proc_param->in_progress = false;
+				} else {
+					active_proc->subproc_initiated = true;
 				}
 				/* Pending connected - wait for connected callback */
 			} else if (err != 0) {
@@ -2055,6 +2137,7 @@ void bt_cap_initiator_connected(struct bt_cap_stream *cap_stream)
 	 * ASEs. For sink ASEs it is the responsibility of the unicast server to do the
 	 * receiver start ready operation. If there are no source ASEs then we just wait.
 	 */
+	cap_initiator_unicast_subproc_complete(active_proc);
 	bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_START);
 	proc_param = get_next_proc_param(active_proc);
 	if (proc_param == NULL) {
@@ -2080,6 +2163,8 @@ void bt_cap_initiator_connected(struct bt_cap_stream *cap_stream)
 
 			return;
 		}
+
+		active_proc->subproc_initiated = true;
 	}
 
 	bt_cap_common_unlock_proc();
@@ -2157,6 +2242,8 @@ void bt_cap_initiator_started(struct bt_cap_stream *cap_stream)
 
 					return;
 				}
+
+				active_proc->subproc_initiated = true;
 			}
 		} /* else await notifications from server */
 
@@ -2166,6 +2253,7 @@ void bt_cap_initiator_started(struct bt_cap_stream *cap_stream)
 		return;
 	}
 
+	cap_initiator_unicast_subproc_complete(active_proc);
 	cap_initiator_unicast_audio_proc_complete(active_proc);
 }
 
@@ -2605,6 +2693,8 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 		err = bt_bap_stream_disable(bap_stream);
 		if (err != 0) {
 			LOG_DBG("Failed to disable bap_stream %p: %d", proc_param->stream, err);
+		} else {
+			active_proc->subproc_initiated = true;
 		}
 	} else if (can_stop) {
 		struct bt_cap_initiator_proc_param *proc_param;
@@ -2622,6 +2712,8 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 		err = bt_bap_stream_stop(bap_stream);
 		if (err != 0) {
 			LOG_DBG("Failed to stop bap_stream %p: %d", proc_param->stream, err);
+		} else {
+			active_proc->subproc_initiated = true;
 		}
 	} else {
 		struct bt_cap_initiator_proc_param *proc_param;
@@ -2639,6 +2731,8 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 		err = bt_bap_stream_release(bap_stream);
 		if (err != 0) {
 			LOG_DBG("Failed to release bap_stream %p: %d", proc_param->stream, err);
+		} else {
+			active_proc->subproc_initiated = true;
 		}
 	}
 
@@ -2727,6 +2821,7 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(next_bap_stream->conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
+			active_proc->subproc_initiated = true;
 			bt_cap_common_unlock_proc();
 		}
 	} else {
@@ -2735,6 +2830,7 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 		struct bt_bap_stream *next_bap_stream;
 		int err;
 
+		cap_initiator_unicast_subproc_complete(active_proc);
 		bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_STOP);
 
 		proc_param = get_next_proc_param(active_proc);
@@ -2761,6 +2857,7 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(next_bap_stream->conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
+			active_proc->subproc_initiated = true;
 			/* else wait for server notification*/
 			bt_cap_common_unlock_proc();
 		}
@@ -2832,6 +2929,8 @@ void bt_cap_initiator_stopped(struct bt_cap_stream *cap_stream)
 
 				return;
 			}
+
+			active_proc->subproc_initiated = true;
 		} /* else await notification from server */
 	} else {
 		/* We are done stopping streams now - We mark the next subproc. If
@@ -2849,6 +2948,7 @@ void bt_cap_initiator_stopped(struct bt_cap_stream *cap_stream)
 			return;
 		}
 
+		cap_initiator_unicast_subproc_complete(active_proc);
 		bt_cap_common_set_subproc(BT_CAP_COMMON_SUBPROC_TYPE_RELEASE);
 
 		proc_param = get_next_proc_param(active_proc);
@@ -2926,9 +3026,11 @@ void bt_cap_initiator_released(struct bt_cap_stream *cap_stream)
 			bt_cap_common_abort_proc(next_bap_stream->conn, err);
 			cap_initiator_unicast_audio_proc_complete(active_proc);
 		} else {
+			active_proc->subproc_initiated = true;
 			bt_cap_common_unlock_proc();
 		}
 	} else {
+		cap_initiator_unicast_subproc_complete(active_proc);
 		cap_initiator_unicast_audio_proc_complete(active_proc);
 	}
 }

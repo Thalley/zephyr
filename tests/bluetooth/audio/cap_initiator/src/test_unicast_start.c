@@ -236,6 +236,18 @@ static ZTEST_F(cap_initiator_test_unicast_start, test_initiator_unicast_start)
 	zassert_equal_ptr(NULL, mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0],
 			  "%p", mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0]);
 
+	/* All streams started from the idle state, so all subprocedures were performed */
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_codec_configured", 1,
+			   mock_cap_initiator_unicast_start_codec_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_qos_configured", 1,
+			   mock_cap_initiator_unicast_start_qos_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_enabled", 1,
+			   mock_cap_initiator_unicast_start_enabled_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_connected", 1,
+			   mock_cap_initiator_unicast_start_connected_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_started", 1,
+			   mock_cap_initiator_unicast_start_started_cb_fake.call_count);
+
 	ARRAY_FOR_EACH(fixture->cap_streams, i) {
 		const struct bt_bap_stream *bap_stream = &fixture->cap_streams[i].bap_stream;
 		const enum bt_bap_ep_state state = bap_stream->ep->state;
@@ -428,6 +440,14 @@ static ZTEST_F(cap_initiator_test_unicast_start,
 	zassert_equal_ptr(NULL, mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0],
 			  "%p", mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0]);
 
+	/* The streams had a different codec configuration, so the Codec Configuration
+	 * subprocedure was performed
+	 */
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_codec_configured", 1,
+			   mock_cap_initiator_unicast_start_codec_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_qos_configured", 1,
+			   mock_cap_initiator_unicast_start_qos_configured_cb_fake.call_count);
+
 	ARRAY_FOR_EACH(fixture->cap_streams, i) {
 		const struct bt_bap_stream *bap_stream = &fixture->cap_streams[i].bap_stream;
 		const struct bt_audio_codec_cfg *codec_cfg = bap_stream->codec_cfg;
@@ -491,6 +511,14 @@ static ZTEST_F(cap_initiator_test_unicast_start, test_initiator_unicast_start_st
 	zassert_equal_ptr(NULL, mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0],
 			  "%p", mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0]);
 
+	/* The streams were already codec configured, so that subprocedure was skipped, but the
+	 * QoS configuration was different so that subprocedure was performed
+	 */
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_codec_configured", 0,
+			   mock_cap_initiator_unicast_start_codec_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_qos_configured", 1,
+			   mock_cap_initiator_unicast_start_qos_configured_cb_fake.call_count);
+
 	ARRAY_FOR_EACH(fixture->cap_streams, i) {
 		const struct bt_bap_stream *bap_stream = &fixture->cap_streams[i].bap_stream;
 		const enum bt_bap_ep_state state = bap_stream->ep->state;
@@ -532,6 +560,16 @@ static ZTEST_F(cap_initiator_test_unicast_start, test_initiator_unicast_start_st
 		      mock_cap_initiator_unicast_start_complete_cb_fake.arg0_history[0]);
 	zassert_equal_ptr(NULL, mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0],
 			  "%p", mock_cap_initiator_unicast_start_complete_cb_fake.arg1_history[0]);
+
+	/* The streams were already enabled with the requested configuration and metadata, so the
+	 * Codec Configuration, QoS Configuration and Enable subprocedures were all skipped
+	 */
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_codec_configured", 0,
+			   mock_cap_initiator_unicast_start_codec_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_qos_configured", 0,
+			   mock_cap_initiator_unicast_start_qos_configured_cb_fake.call_count);
+	zexpect_call_count("bt_cap_initiator_cb.unicast_start_enabled", 0,
+			   mock_cap_initiator_unicast_start_enabled_cb_fake.call_count);
 
 	ARRAY_FOR_EACH(fixture->cap_streams, i) {
 		const struct bt_bap_stream *bap_stream = &fixture->cap_streams[i].bap_stream;

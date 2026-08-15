@@ -229,6 +229,16 @@ New APIs and options
     * :c:func:`bt_ascs_unregister`
     * :c:func:`bt_bap_unicast_client_qos_from_group`
     * :c:func:`bt_bap_qos_cfg_eq`
+    * :c:member:`bt_cap_initiator_cb.unicast_start_codec_configured`,
+      :c:member:`bt_cap_initiator_cb.unicast_start_qos_configured`,
+      :c:member:`bt_cap_initiator_cb.unicast_start_enabled`,
+      :c:member:`bt_cap_initiator_cb.unicast_start_connected` and
+      :c:member:`bt_cap_initiator_cb.unicast_start_started` to notify the application whenever a
+      subprocedure of :c:func:`bt_cap_initiator_unicast_audio_start` has been completed
+    * :c:member:`bt_cap_initiator_cb.unicast_stop_disabled`,
+      :c:member:`bt_cap_initiator_cb.unicast_stop_stopped` and
+      :c:member:`bt_cap_initiator_cb.unicast_stop_released` to notify the application whenever a
+      subprocedure of :c:func:`bt_cap_initiator_unicast_audio_stop` has been completed
 
   * Host
 
