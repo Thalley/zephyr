@@ -2436,6 +2436,7 @@ static bool can_disable_stream(const struct bt_bap_stream *bap_stream)
 	return state == BT_BAP_EP_STATE_STREAMING || state == BT_BAP_EP_STATE_ENABLING;
 }
 
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 static bool can_stop_stream(const struct bt_bap_stream *bap_stream)
 {
 	enum bt_iso_state iso_state;
@@ -2455,6 +2456,7 @@ static bool can_stop_stream(const struct bt_bap_stream *bap_stream)
 
 	return bt_cap_initiator_stream_is_in_state(bap_stream, BT_BAP_EP_STATE_DISABLING);
 }
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 
 bool bt_cap_initiator_valid_unicast_audio_stop_param(
 	const struct bt_cap_unicast_audio_stop_param *param)
@@ -2566,9 +2568,11 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 			can_disable = true;
 		}
 
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 		if (!can_stop && can_stop_stream(bap_stream)) {
 			can_stop = true;
 		}
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 
 		if (!can_release && param->release && can_release_stream(bap_stream)) {
 			can_release = true;
@@ -2606,6 +2610,7 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 		if (err != 0) {
 			LOG_DBG("Failed to disable bap_stream %p: %d", proc_param->stream, err);
 		}
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 	} else if (can_stop) {
 		struct bt_cap_initiator_proc_param *proc_param;
 		struct bt_bap_stream *bap_stream;
@@ -2623,6 +2628,7 @@ int cap_initiator_unicast_audio_stop(struct bt_cap_common_proc *active_proc,
 		if (err != 0) {
 			LOG_DBG("Failed to stop bap_stream %p: %d", proc_param->stream, err);
 		}
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 	} else {
 		struct bt_cap_initiator_proc_param *proc_param;
 		struct bt_bap_stream *bap_stream;
@@ -2754,7 +2760,11 @@ void bt_cap_initiator_disabled(struct bt_cap_stream *cap_stream)
 		active_proc->proc_initiated_cnt++;
 		proc_param->in_progress = true;
 
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 		err = bt_bap_stream_stop(next_bap_stream);
+#else
+		err = -ENOTSUP;
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 		if (err != 0) {
 			LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
 
@@ -2823,7 +2833,11 @@ void bt_cap_initiator_stopped(struct bt_cap_stream *cap_stream)
 			active_proc->proc_initiated_cnt++;
 			proc_param->in_progress = true;
 
+#if defined(CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC)
 			err = bt_bap_stream_stop(next_bap_stream);
+#else
+			err = -ENOTSUP;
+#endif /* CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC */
 			if (err != 0) {
 				LOG_DBG("Failed to stop stream %p: %d", next_cap_stream, err);
 
