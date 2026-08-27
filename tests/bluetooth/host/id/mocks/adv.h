@@ -10,8 +10,6 @@
 
 #include <host/adv.h>
 
-typedef bool (*bt_le_ext_adv_foreach_cb)(struct bt_le_ext_adv *adv, void *data);
-
 /* List of fakes used by this unit tester */
 #define ADV_FFF_FAKES_LIST(FAKE)                                                                   \
 	FAKE(bt_le_adv_set_enable)                                                                 \

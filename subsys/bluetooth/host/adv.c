@@ -233,8 +233,7 @@ struct bt_le_ext_adv *bt_hci_adv_lookup_handle(uint8_t handle)
 #endif /* CONFIG_BT_BROADCASTER */
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 
-void bt_le_ext_adv_foreach(bool (*func)(struct bt_le_ext_adv *adv, void *data),
-			   void *data)
+void bt_le_ext_adv_foreach(bt_le_ext_adv_foreach_cb func, void *data)
 {
 #if defined(CONFIG_BT_EXT_ADV)
 	for (size_t i = 0; i < ARRAY_SIZE(adv_pool); i++) {
