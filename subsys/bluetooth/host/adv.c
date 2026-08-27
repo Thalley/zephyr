@@ -242,7 +242,7 @@ struct bt_le_ext_adv *bt_hci_adv_lookup_handle(uint8_t handle)
 #endif /* CONFIG_BT_BROADCASTER */
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 
-int bt_le_ext_adv_foreach(bool (*func)(struct bt_le_ext_adv *adv, void *data), void *data)
+int bt_le_ext_adv_foreach(bt_le_ext_adv_foreach_cb func, void *data)
 {
 	if (func == NULL) {
 		return -EINVAL;
@@ -257,8 +257,14 @@ int bt_le_ext_adv_foreach(bool (*func)(struct bt_le_ext_adv *adv, void *data), v
 		}
 	}
 #else
-	if (!func(&bt_dev.adv, data)) {
-		return -ECANCELED;
+	/* When CONFIG_BT_EXT_ADV is disabled, bt_dev.adv always exist, but it is only valid when
+	 * bt_le_adv_start has been called which sets BT_ADV_ENABLED so we check for that before
+	 * calling the callback
+	 */
+	if (atomic_test_bit(bt_dev.adv.flags, BT_ADV_ENABLED)) {
+		if (!func(&bt_dev.adv, data)) {
+			return -ECANCELED;
+		}
 	}
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 

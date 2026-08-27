@@ -1517,6 +1517,45 @@ int bt_le_ext_adv_delete(struct bt_le_ext_adv *adv);
  */
 uint8_t bt_le_ext_adv_get_index(struct bt_le_ext_adv *adv);
 
+/**
+ * @typedef bt_le_ext_adv_foreach_cb
+ * @brief Callback type for iterating over advertising sets.
+ *
+ * A function of this type is given to the @ref bt_le_ext_adv_foreach function
+ * and will be called for each advertising set that has been created.
+ *
+ * @param adv  Advertising set object.
+ * @param data User data provided to @ref bt_le_ext_adv_foreach.
+ *
+ * @retval true  Continue iterating over the remaining advertising sets.
+ * @retval false Stop iterating over the advertising sets.
+ */
+typedef bool (*bt_le_ext_adv_foreach_cb)(struct bt_le_ext_adv *adv, void *data);
+
+/**
+ * @brief Iterate through all existing advertising sets.
+ *
+ * The callback is called for each advertising set that has been created with
+ * @ref bt_le_ext_adv_create, as well as for the advertising set implicitly created by
+ * @ref bt_le_adv_start. The iteration stops once all advertising sets have been provided to
+ * @p func, or once @p func returns false.
+ *
+ * When @kconfig{CONFIG_BT_EXT_ADV} is disabled, there is only a single legacy advertising that can
+ * be returned in the callback, which will only be called when the advertising set is active (i..e.
+ * started with bt_le_adv_start()).
+ *
+ *
+ * @note It is not safe to delete or create advertising sets from @p func.
+ *
+ * @param func Function to call for each advertising set. Shall not be NULL.
+ * @param data User data to be passed to the callback.
+ *
+ * @retval 0 Success
+ * @retval -ECANCELED Iteration was stopped by the callback function before complete.
+ * @retval -EINVAL @p conn or @p func were NULL.
+ */
+int bt_le_ext_adv_foreach(bt_le_ext_adv_foreach_cb func, void *data);
+
 /** Advertising states. */
 enum bt_le_ext_adv_state {
 	/** The advertising set has been created but not enabled. */
