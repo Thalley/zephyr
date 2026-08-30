@@ -1,0 +1,11 @@
+common:
+  tags:
+    - bluetooth
+    - host
+tests:
+  bluetooth.host.adv.bt_le_ext_adv_foreach:
+    type: unit
+  bluetooth.host.adv.bt_le_ext_adv_foreach.legacy:
+    type: unit
+    extra_configs:
+      - CONFIG_BT_EXT_ADV=n
