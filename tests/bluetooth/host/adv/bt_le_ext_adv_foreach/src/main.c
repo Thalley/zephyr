@@ -4,12 +4,7 @@
  */
 
 /*
- * Unit tests for bt_le_ext_adv_foreach() (subsys/bluetooth/host/adv.c).
- *
- * The tests cover all return paths of the function:
- *   - -EINVAL when no callback is provided
- *   - -ECANCELED when the callback stops the iteration
- *   - 0 when all advertising sets have been provided to the callback
+ * Unit tests for bt_le_ext_adv_foreach()
  *
  * The advertising set storage differs depending on CONFIG_BT_EXT_ADV, so the
  * test suite is built both with extended advertising support enabled (using the
@@ -31,13 +26,9 @@
 #include <host/hci_core.h>
 
 /* Sentinel used to verify that the user data is passed on to the callback. */
-static int user_data_sentinel;
+static int user_data_sentinel = 1234;
 
-#if defined(CONFIG_BT_EXT_ADV)
-#define MAX_ADV_SETS CONFIG_BT_EXT_ADV_MAX_ADV_SET
-#else
-#define MAX_ADV_SETS 1
-#endif /* defined(CONFIG_BT_EXT_ADV) */
+#define MAX_ADV_SETS COND_CODE_1(CONFIG_BT_EXT_ADV, (CONFIG_BT_EXT_ADV_MAX_ADV_SET), (1))
 
 /* State captured by the iteration callbacks. */
 static struct {
@@ -88,18 +79,23 @@ static void test_before(void *fixture)
 {
 	ARG_UNUSED(fixture);
 
-	memset(&cb_state, 0, sizeof(cb_state));
+	(void)memset(&cb_state, 0, sizeof(cb_state));
 }
 
 static void common_setup(void)
 {
-	memset(&bt_dev, 0, sizeof(bt_dev));
+	(void)memset(&bt_dev, 0, sizeof(bt_dev));
 	bt_dev.id_count = 1;
 	bt_dev.hci_version = BT_HCI_VERSION_5_0;
-	/* A non-zero identity address is required, BT_ADDR_LE_ANY is rejected. */
+	/*
+	 * Advertising parameters are rejected unless the identity address is set to something
+	 * else than BT_ADDR_LE_ANY, so a static random address is used as the identity. The two
+	 * most significant bits of a static random address are set (0xC0), and the remaining bits
+	 * shall not all be equal, hence the 0x01.
+	 */
 	bt_dev.id_addr[0].type = BT_ADDR_LE_RANDOM;
-	bt_dev.id_addr[0].a.val[0] = 0x01;
-	bt_dev.id_addr[0].a.val[5] = 0xC0;
+	bt_dev.id_addr[0].a.val[0] = 0x01U;
+	bt_dev.id_addr[0].a.val[5] = 0xC0U;
 	atomic_set_bit(bt_dev.flags, BT_DEV_READY);
 }
 
@@ -109,7 +105,7 @@ ZTEST_SUITE(bt_le_ext_adv_foreach, NULL, NULL, test_before, NULL, NULL);
  * Passing a NULL callback is invalid and shall be rejected without touching any
  * advertising set.
  */
-ZTEST(bt_le_ext_adv_foreach, test_null_callback_returns_einval)
+static ZTEST(bt_le_ext_adv_foreach, test_null_callback_returns_einval)
 {
 	int err;
 
@@ -119,7 +115,7 @@ ZTEST(bt_le_ext_adv_foreach, test_null_callback_returns_einval)
 }
 
 /* A NULL callback is rejected regardless of the user data provided. */
-ZTEST(bt_le_ext_adv_foreach, test_null_callback_with_null_data_returns_einval)
+static ZTEST(bt_le_ext_adv_foreach, test_null_callback_with_null_data_returns_einval)
 {
 	int err;
 
@@ -184,7 +180,7 @@ static void ext_adv_before(void *fixture)
 ZTEST_SUITE(bt_le_ext_adv_foreach_ext, NULL, NULL, ext_adv_before, delete_all_adv_sets, NULL);
 
 /* Without any created advertising set the callback shall not be called. */
-ZTEST(bt_le_ext_adv_foreach_ext, test_no_adv_sets_returns_success)
+static ZTEST(bt_le_ext_adv_foreach_ext, test_no_adv_sets_returns_success)
 {
 	int err;
 
@@ -196,13 +192,13 @@ ZTEST(bt_le_ext_adv_foreach_ext, test_no_adv_sets_returns_success)
 }
 
 /* Every created advertising set shall be provided to the callback exactly once. */
-ZTEST(bt_le_ext_adv_foreach_ext, test_all_adv_sets_are_provided)
+static ZTEST(bt_le_ext_adv_foreach_ext, test_all_adv_sets_are_provided)
 {
 	struct bt_le_ext_adv *advs[CONFIG_BT_EXT_ADV_MAX_ADV_SET];
 	int err;
 
-	for (size_t i = 0; i < ARRAY_SIZE(advs); i++) {
-		advs[i] = create_adv_set();
+	ARRAY_FOR_EACH_PTR(advs, adv) {
+		*adv = create_adv_set();
 	}
 
 	err = bt_le_ext_adv_foreach(count_cb, &user_data_sentinel);
@@ -213,14 +209,13 @@ ZTEST(bt_le_ext_adv_foreach_ext, test_all_adv_sets_are_provided)
 	zassert_false(cb_state.null_adv, "Callback called with a NULL advertising set");
 	zassert_false(cb_state.unexpected_data, "Callback called with unexpected user data");
 
-	for (size_t i = 0; i < ARRAY_SIZE(advs); i++) {
-		expect_visited(advs[i]);
+	ARRAY_FOR_EACH_PTR(advs, adv) {
+		expect_visited(*adv);
 	}
-
 }
 
 /* Deleted advertising sets shall no longer be provided to the callback. */
-ZTEST(bt_le_ext_adv_foreach_ext, test_deleted_adv_set_is_not_provided)
+static ZTEST(bt_le_ext_adv_foreach_ext, test_deleted_adv_set_is_not_provided)
 {
 	struct bt_le_ext_adv *first;
 	struct bt_le_ext_adv *second;
@@ -236,14 +231,13 @@ ZTEST(bt_le_ext_adv_foreach_ext, test_deleted_adv_set_is_not_provided)
 	zassert_ok(err, "Unexpected return value %d", err);
 	zassert_equal(cb_state.call_count, 1, "Callback called %u times", cb_state.call_count);
 	expect_visited(second);
-
 }
 
 /*
  * A callback returning false shall stop the iteration and cause -ECANCELED to
  * be returned.
  */
-ZTEST(bt_le_ext_adv_foreach_ext, test_callback_stop_returns_ecanceled)
+static ZTEST(bt_le_ext_adv_foreach_ext, test_callback_stop_returns_ecanceled)
 {
 	int err;
 
@@ -255,14 +249,13 @@ ZTEST(bt_le_ext_adv_foreach_ext, test_callback_stop_returns_ecanceled)
 
 	zassert_equal(err, -ECANCELED, "Unexpected return value %d", err);
 	zassert_equal(cb_state.call_count, 1, "Callback called %u times", cb_state.call_count);
-
 }
 
 /*
  * The user data pointer is optional and shall be forwarded to the callback
  * unmodified, including when it is NULL.
  */
-ZTEST(bt_le_ext_adv_foreach_ext, test_null_user_data_is_forwarded)
+static ZTEST(bt_le_ext_adv_foreach_ext, test_null_user_data_is_forwarded)
 {
 	int err;
 
@@ -274,7 +267,6 @@ ZTEST(bt_le_ext_adv_foreach_ext, test_null_user_data_is_forwarded)
 	zassert_ok(err, "Unexpected return value %d", err);
 	zassert_equal(cb_state.call_count, 1, "Callback called %u times", cb_state.call_count);
 	zassert_true(cb_state.unexpected_data, "Callback did not receive the NULL user data");
-
 }
 #else /* !defined(CONFIG_BT_EXT_ADV) */
 static void legacy_before(void *fixture)
@@ -299,7 +291,7 @@ ZTEST_SUITE(bt_le_ext_adv_foreach_legacy, NULL, NULL, legacy_before, NULL, NULL)
  * The legacy advertising set always exists, but it shall only be provided to
  * the callback while it is advertising.
  */
-ZTEST(bt_le_ext_adv_foreach_legacy, test_inactive_adv_is_not_provided)
+static ZTEST(bt_le_ext_adv_foreach_legacy, test_inactive_adv_is_not_provided)
 {
 	int err;
 
@@ -310,7 +302,7 @@ ZTEST(bt_le_ext_adv_foreach_legacy, test_inactive_adv_is_not_provided)
 }
 
 /* The started legacy advertising set shall be provided to the callback. */
-ZTEST(bt_le_ext_adv_foreach_legacy, test_active_adv_is_provided)
+static ZTEST(bt_le_ext_adv_foreach_legacy, test_active_adv_is_provided)
 {
 	int err;
 
@@ -329,7 +321,7 @@ ZTEST(bt_le_ext_adv_foreach_legacy, test_active_adv_is_provided)
  * A callback returning false shall stop the iteration and cause -ECANCELED to
  * be returned.
  */
-ZTEST(bt_le_ext_adv_foreach_legacy, test_callback_stop_returns_ecanceled)
+static ZTEST(bt_le_ext_adv_foreach_legacy, test_callback_stop_returns_ecanceled)
 {
 	int err;
 
@@ -345,7 +337,7 @@ ZTEST(bt_le_ext_adv_foreach_legacy, test_callback_stop_returns_ecanceled)
  * The user data pointer is optional and shall be forwarded to the callback
  * unmodified, including when it is NULL.
  */
-ZTEST(bt_le_ext_adv_foreach_legacy, test_null_user_data_is_forwarded)
+static ZTEST(bt_le_ext_adv_foreach_legacy, test_null_user_data_is_forwarded)
 {
 	int err;
 

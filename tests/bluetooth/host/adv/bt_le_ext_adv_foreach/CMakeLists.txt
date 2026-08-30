@@ -14,7 +14,7 @@ target_link_libraries(testbinary PRIVATE host_mocks)
 target_sources(testbinary
     PRIVATE
     src/main.c
-    src/stubs.c
+    src/mocks.c
 
     ${ZEPHYR_BASE}/subsys/bluetooth/host/adv.c
     ${ZEPHYR_BASE}/subsys/bluetooth/common/addr.c

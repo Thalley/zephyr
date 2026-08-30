@@ -4,10 +4,10 @@
  */
 
 /*
- * Stub implementations of the external symbols referenced by adv.c that are not
+ * Mock implementations of the external symbols referenced by adv.c that are not
  * exercised by the bt_le_ext_adv_foreach() tests. Only the HCI command path
  * used by bt_le_ext_adv_create() and bt_le_adv_start() needs meaningful
- * behaviour, the rest are no-op stubs so that adv.c links in the native unit
+ * behaviour, the rest are no-op mocks so that adv.c links in the native unit
  * test build.
  */
 
