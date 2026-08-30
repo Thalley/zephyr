@@ -304,6 +304,7 @@ static struct {
 	struct bt_le_ext_adv *visited[MAX_ADV_SETS];
 	bool unexpected_data;
 	bool null_adv;
+	void *received_data;
 } cb_state;
 
 static bool count_cb(struct bt_le_ext_adv *adv, void *data)
@@ -315,6 +316,8 @@ static bool count_cb(struct bt_le_ext_adv *adv, void *data)
 	if (data != &user_data_sentinel) {
 		cb_state.unexpected_data = true;
 	}
+
+	cb_state.received_data = data;
 
 	if (cb_state.call_count < ARRAY_SIZE(cb_state.visited)) {
 		cb_state.visited[cb_state.call_count] = adv;
@@ -535,6 +538,8 @@ static ZTEST(bt_le_ext_adv_foreach_ext, test_null_user_data_is_forwarded)
 		      cb_state.call_count);
 	zassert_true(cb_state.unexpected_data,
 		     "Callback did not receive the NULL user data");
+	zassert_equal(cb_state.received_data, NULL,
+		      "Callback received %p instead of NULL", cb_state.received_data);
 }
 #else /* !defined(CONFIG_BT_EXT_ADV) */
 static void start_legacy_adv(void)
@@ -625,6 +630,8 @@ static ZTEST(bt_le_ext_adv_foreach_legacy, test_null_user_data_is_forwarded)
 		      cb_state.call_count);
 	zassert_true(cb_state.unexpected_data,
 		     "Callback did not receive the NULL user data");
+	zassert_equal(cb_state.received_data, NULL,
+		      "Callback received %p instead of NULL", cb_state.received_data);
 }
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 
