@@ -4,8 +4,20 @@ common:
     - host
 tests:
   bluetooth.host.adv.bt_le_ext_adv_foreach:
-    type: unit
+    extra_args:
+      - EXTRA_DTC_OVERLAY_FILE="test.overlay"
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim
   bluetooth.host.adv.bt_le_ext_adv_foreach.legacy:
-    type: unit
+    extra_args:
+      - EXTRA_DTC_OVERLAY_FILE="test.overlay"
     extra_configs:
       - CONFIG_BT_EXT_ADV=n
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim
