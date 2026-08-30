@@ -26,4 +26,4 @@ DECLARE_FAKE_VALUE_FUNC(uint8_t, bt_le_ext_adv_get_index, struct bt_le_ext_adv *
 DECLARE_FAKE_VALUE_FUNC(int, bt_le_adv_set_enable_legacy, struct bt_le_ext_adv *, bool);
 DECLARE_FAKE_VALUE_FUNC(int, bt_le_adv_set_enable_ext, struct bt_le_ext_adv *, bool,
 			const struct bt_le_ext_adv_start_param *);
-DECLARE_FAKE_VOID_FUNC(bt_le_ext_adv_foreach, bt_le_ext_adv_foreach_cb, void *);
+DECLARE_FAKE_VALUE_FUNC(int, bt_le_ext_adv_foreach, bt_le_ext_adv_foreach_cb, void *);

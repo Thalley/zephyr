@@ -25,6 +25,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/util_macro.h>
+#include <zephyr/toolchain.h>
 #include <sys/types.h>
 
 #include "addr_internal.h"
@@ -241,20 +242,27 @@ struct bt_le_ext_adv *bt_hci_adv_lookup_handle(uint8_t handle)
 #endif /* CONFIG_BT_BROADCASTER */
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 
-void bt_le_ext_adv_foreach(bool (*func)(struct bt_le_ext_adv *adv, void *data),
-			   void *data)
+int bt_le_ext_adv_foreach(bool (*func)(struct bt_le_ext_adv *adv, void *data), void *data)
 {
+	if (func == NULL) {
+		return -EINVAL;
+	}
+
 #if defined(CONFIG_BT_EXT_ADV)
 	for (size_t i = 0; i < ARRAY_SIZE(adv_pool); i++) {
 		if (atomic_test_bit(adv_pool[i].flags, BT_ADV_CREATED)) {
 			if (!func(&adv_pool[i], data)) {
-				return;
+				return -ECANCELED;
 			}
 		}
 	}
 #else
-	(void)func(&bt_dev.adv, data);
+	if (!func(&bt_dev.adv, data)) {
+		return -ECANCELED;
+	}
 #endif /* defined(CONFIG_BT_EXT_ADV) */
+
+	return 0;
 }
 
 static bool clear_ext_adv_instance(struct bt_le_ext_adv *adv, void *data)
@@ -267,7 +275,11 @@ static bool clear_ext_adv_instance(struct bt_le_ext_adv *adv, void *data)
 
 void bt_adv_reset_adv_pool(void)
 {
-	bt_le_ext_adv_foreach(clear_ext_adv_instance, NULL);
+	__maybe_unused int err;
+
+	err = bt_le_ext_adv_foreach(clear_ext_adv_instance, NULL);
+	__ASSERT(err == 0, "Unexpected return from bt_le_ext_adv_foreach: %d", err);
+
 	(void)memset(&bt_dev.adv, 0, sizeof(bt_dev.adv));
 }
 

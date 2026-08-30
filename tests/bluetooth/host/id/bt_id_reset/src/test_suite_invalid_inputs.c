@@ -151,8 +151,8 @@ ZTEST(bt_id_reset_invalid_inputs, test_pa_address_exists_in_id_list)
 	zassert_true(err == -EALREADY, "Unexpected error code '%d' was returned", err);
 }
 
-static void bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv *adv, void *data),
-					      void *data)
+static int bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv *adv, void *data),
+					     void *data)
 {
 	struct bt_le_ext_adv unused_adv_params = {0};
 	struct bt_le_ext_adv adv_params = {0};
@@ -180,6 +180,8 @@ static void bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv 
 	/* A matching advertising set shall stop the iteration */
 	cont = func(&adv_params, data);
 	zassert_false(cont, "Iteration was not stopped by a matching advertising set");
+
+	return 0;
 }
 
 /*

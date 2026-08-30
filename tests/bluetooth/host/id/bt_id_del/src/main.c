@@ -134,8 +134,8 @@ ZTEST(bt_id_del, test_conn_lookup_returns_valid_conn_ref)
 		     "Flags were not correctly set");
 }
 
-void bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv *adv, void *data),
-				       void *data)
+int bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv *adv, void *data),
+				      void *data)
 {
 	struct bt_le_ext_adv unused_adv_params = {0};
 	struct bt_le_ext_adv adv_params = {0};
@@ -154,6 +154,8 @@ void bt_le_ext_adv_foreach_custom_fake(bool (*func)(struct bt_le_ext_adv *adv, v
 	/* An enabled limited advertising set shall stop the iteration */
 	cont = func(&adv_params, data);
 	zassert_false(cont, "Iteration was not stopped by a matching advertising set");
+
+	return 0;
 }
 
 /*
