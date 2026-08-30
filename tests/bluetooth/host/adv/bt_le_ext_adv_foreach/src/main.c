@@ -4,7 +4,7 @@
  */
 
 /*
- * Application tests for bt_le_ext_adv_foreach() on native_sim.
+ * Application tests for bt_le_ext_adv_foreach().
  *
  * The advertising set storage differs depending on CONFIG_BT_EXT_ADV, so the
  * test suite is built both with extended advertising support enabled (using the
@@ -125,41 +125,88 @@ static void le_set_ext_adv_param(struct net_buf *buf, struct net_buf **evt,
  * bt_le_ext_adv_delete(), bt_le_adv_start() and bt_le_adv_stop().
  */
 static const struct cmd_handler cmds[] = {
-	{ BT_HCI_OP_READ_LOCAL_VERSION_INFO,
-	  sizeof(struct bt_hci_rp_read_local_version_info), generic_success },
-	{ BT_HCI_OP_READ_SUPPORTED_COMMANDS,
-	  sizeof(struct bt_hci_rp_read_supported_commands),
-	  read_supported_commands },
-	{ BT_HCI_OP_READ_LOCAL_FEATURES,
-	  sizeof(struct bt_hci_rp_read_local_features), read_local_features },
-	{ BT_HCI_OP_READ_BD_ADDR,
-	  sizeof(struct bt_hci_rp_read_bd_addr), generic_success },
-	{ BT_HCI_OP_SET_EVENT_MASK,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
-	{ BT_HCI_OP_LE_SET_EVENT_MASK,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
-	{ BT_HCI_OP_LE_READ_LOCAL_FEATURES,
-	  sizeof(struct bt_hci_rp_le_read_local_features),
-	  le_read_local_features },
-	{ BT_HCI_OP_LE_READ_SUPP_STATES,
-	  sizeof(struct bt_hci_rp_le_read_supp_states), le_read_supp_states },
-	{ BT_HCI_OP_LE_RAND,
-	  sizeof(struct bt_hci_rp_le_rand), generic_success },
-	{ BT_HCI_OP_LE_SET_RANDOM_ADDRESS,
-	  sizeof(struct bt_hci_cp_le_set_random_address), generic_success },
-	{ BT_HCI_OP_RESET, 0, generic_success },
+	{
+		BT_HCI_OP_READ_LOCAL_VERSION_INFO,
+		sizeof(struct bt_hci_rp_read_local_version_info),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_READ_SUPPORTED_COMMANDS,
+		sizeof(struct bt_hci_rp_read_supported_commands),
+		read_supported_commands,
+	},
+	{
+		BT_HCI_OP_READ_LOCAL_FEATURES,
+		sizeof(struct bt_hci_rp_read_local_features),
+		read_local_features,
+	},
+	{
+		BT_HCI_OP_READ_BD_ADDR,
+		sizeof(struct bt_hci_rp_read_bd_addr),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_SET_EVENT_MASK,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_LE_SET_EVENT_MASK,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_LE_READ_LOCAL_FEATURES,
+		sizeof(struct bt_hci_rp_le_read_local_features),
+		le_read_local_features,
+	},
+	{
+		BT_HCI_OP_LE_READ_SUPP_STATES,
+		sizeof(struct bt_hci_rp_le_read_supp_states),
+		le_read_supp_states,
+	},
+	{
+		BT_HCI_OP_LE_RAND,
+		sizeof(struct bt_hci_rp_le_rand),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_LE_SET_RANDOM_ADDRESS,
+		sizeof(struct bt_hci_cp_le_set_random_address),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_RESET,
+		0,
+		generic_success,
+	},
 	/* Extended advertising commands */
-	{ BT_HCI_OP_LE_SET_EXT_ADV_PARAM,
-	  sizeof(struct bt_hci_rp_le_set_ext_adv_param), le_set_ext_adv_param },
-	{ BT_HCI_OP_LE_SET_ADV_SET_RANDOM_ADDR,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
-	{ BT_HCI_OP_LE_REMOVE_ADV_SET,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
+	{
+		BT_HCI_OP_LE_SET_EXT_ADV_PARAM,
+		sizeof(struct bt_hci_rp_le_set_ext_adv_param),
+		le_set_ext_adv_param,
+	},
+	{
+		BT_HCI_OP_LE_SET_ADV_SET_RANDOM_ADDR,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_LE_REMOVE_ADV_SET,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
 	/* Legacy advertising commands */
-	{ BT_HCI_OP_LE_SET_ADV_PARAM,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
-	{ BT_HCI_OP_LE_SET_ADV_ENABLE,
-	  sizeof(struct bt_hci_evt_cc_status), generic_success },
+	{
+		BT_HCI_OP_LE_SET_ADV_PARAM,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
+	{
+		BT_HCI_OP_LE_SET_ADV_ENABLE,
+		sizeof(struct bt_hci_evt_cc_status),
+		generic_success,
+	},
 };
 
 /* Loop over handlers to find and invoke the one matching opcode. */
@@ -175,7 +222,7 @@ static int cmd_handle_helper(uint16_t opcode, struct net_buf *cmd,
 			continue;
 		}
 
-		if (handler->handler) {
+		if (handler->handler != NULL) {
 			handler->handler(cmd, evt, handler->len, opcode);
 			return 0;
 		}
@@ -205,7 +252,7 @@ static int cmd_handle(const struct device *dev, struct net_buf *cmd,
 		ccst->status = BT_HCI_ERR_UNKNOWN_CMD;
 	}
 
-	if (evt) {
+	if (evt != NULL) {
 		bt_hci_recv(dev, evt);
 	}
 
@@ -253,7 +300,7 @@ static int user_data_sentinel = 1234;
 
 /* State captured by the iteration callbacks. */
 static struct {
-	unsigned int call_count;
+	size_t call_count;
 	struct bt_le_ext_adv *visited[MAX_ADV_SETS];
 	bool unexpected_data;
 	bool null_adv;
@@ -287,15 +334,14 @@ static bool stop_cb(struct bt_le_ext_adv *adv, void *data)
 
 static void expect_visited(struct bt_le_ext_adv *adv)
 {
-	for (unsigned int i = 0;
+	for (size_t i = 0U;
 	     i < MIN(cb_state.call_count, ARRAY_SIZE(cb_state.visited)); i++) {
 		if (cb_state.visited[i] == adv) {
 			return;
 		}
 	}
 
-	zassert_unreachable("Advertising set %p was not provided to the callback",
-			    adv);
+	zassert_unreachable("Advertising set %p was not provided to the callback", adv);
 }
 
 static void test_before(void *fixture)
@@ -314,8 +360,7 @@ static void *suite_setup(void)
 	return NULL;
 }
 
-ZTEST_SUITE(bt_le_ext_adv_foreach, NULL, suite_setup, test_before, NULL,
-	    NULL);
+ZTEST_SUITE(bt_le_ext_adv_foreach, NULL, suite_setup, test_before, NULL, NULL);
 
 /*
  * Passing a NULL callback is invalid and shall be rejected without touching any
@@ -505,7 +550,7 @@ static void stop_legacy_adv(void *fixture)
 {
 	ARG_UNUSED(fixture);
 
-	(void)bt_le_adv_stop();
+	zassert_ok(bt_le_adv_stop(), "Failed to stop legacy advertising");
 }
 
 ZTEST_SUITE(bt_le_ext_adv_foreach_legacy, NULL, suite_setup, test_before,
