@@ -509,6 +509,11 @@ static size_t usb_out_write_cursor;
  * up to 2 transfers queued at a time, so this may be ahead of usb_out_write_cursor.
  */
 static size_t usb_out_pending_cursor;
+/* Number of frames in a single USB transfer. This is the wMaxPacketSize of the OUT endpoint, and
+ * is thus USB_SAMPLE_CNT when operating at full speed, but only an eighth of that at high speed
+ * where a transfer covers a microframe rather than a frame.
+ */
+static size_t usb_out_slot_frames = USB_SAMPLE_CNT;
 
 /* Amount of data a stream aims to keep between itself and the write cursor. Used when a stream
  * starts, and when it has to be resynchronized because it was about to be overwritten.
@@ -534,6 +539,7 @@ static void usb_out_terminal_disabled(void)
 	 * become available again
 	 */
 	usb_out_pending_cursor = usb_out_write_cursor;
+	usb_out_slot_frames = USB_SAMPLE_CNT;
 
 	err = k_mutex_unlock(&usb_out_data_mutex);
 	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
@@ -626,6 +632,7 @@ void bap_usb_tx_stream_started(struct shell_stream *sh_stream)
 static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uint16_t size,
 				 void *user_data)
 {
+	size_t frame_cnt;
 	void *buf;
 	int err;
 
@@ -637,8 +644,15 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 		return NULL;
 	}
 
-	if (size == 0U || size > USB_STEREO_FRAME_SIZE) {
-		LOG_WRN_RATELIMIT("Unexpected receive buffer size %u", size);
+	/* The USB DMA may write up to size octets, so the slot handed out below must be that
+	 * large. size is the wMaxPacketSize of the endpoint and thus constant while the terminal
+	 * is enabled, which lets usb_data_recv_cb() commit the same amount.
+	 */
+	frame_cnt = size / (USB_CHANNELS * USB_BYTES_PER_SAMPLE);
+	if (frame_cnt == 0U || frame_cnt > USB_SAMPLE_CNT ||
+	    (size % (USB_CHANNELS * USB_BYTES_PER_SAMPLE)) != 0U ||
+	    (USB_RING_FRAMES % frame_cnt) != 0U) {
+		LOG_WRN_RATELIMIT("Unsupported receive buffer size %u", size);
 
 		return NULL;
 	}
@@ -651,11 +665,18 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 		return NULL;
 	}
 
+	if (frame_cnt != usb_out_slot_frames) {
+		/* Keep the cursors aligned to the new transfer size */
+		usb_out_slot_frames = frame_cnt;
+		usb_out_pending_cursor = usb_align_down(usb_out_write_cursor, frame_cnt);
+		usb_out_write_cursor = usb_out_pending_cursor;
+	}
+
 	/* Hand out the next unused slot in the ring buffer, so that the USB DMA writes directly
 	 * into it. The slot is committed by usb_data_recv_cb().
 	 */
 	buf = &usb_out_ring_buf[usb_out_pending_cursor * USB_CHANNELS];
-	usb_out_pending_cursor = usb_advance(usb_out_pending_cursor, USB_SAMPLE_CNT);
+	usb_out_pending_cursor = usb_advance(usb_out_pending_cursor, frame_cnt);
 
 	err = k_mutex_unlock(&usb_out_data_mutex);
 	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
@@ -685,22 +706,23 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 	}
 
 	/* The data has been written into the ring buffer by DMA already, so all that is left is
-	 * to make it available to the consumers. The host may send short packets, in which case
-	 * the remainder of the slot is zero-filled to keep the ring buffer aligned; that is
-	 * preferable to letting the cursors drift out of alignment.
+	 * to make it available to the consumers. The host may send a short packet, in which case
+	 * the remainder of the slot is zero-filled; the entire slot is always committed so that
+	 * the cursors keep the alignment that the ring buffer sizing relies on.
 	 */
-	frame_cnt = MIN(size / (USB_CHANNELS * USB_BYTES_PER_SAMPLE), USB_SAMPLE_CNT);
-	if (frame_cnt < USB_SAMPLE_CNT) {
+	frame_cnt = MIN(size / (USB_CHANNELS * USB_BYTES_PER_SAMPLE), usb_out_slot_frames);
+	if (frame_cnt < usb_out_slot_frames) {
 		int16_t *pcm = (int16_t *)buf;
 
 		(void)memset(&pcm[frame_cnt * USB_CHANNELS], 0,
-			     (USB_SAMPLE_CNT - frame_cnt) * USB_CHANNELS * USB_BYTES_PER_SAMPLE);
+			     (usb_out_slot_frames - frame_cnt) * USB_CHANNELS *
+				     USB_BYTES_PER_SAMPLE);
 
 		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "Received short USB packet of %u octets",
 				       size);
 	}
 
-	usb_out_write_cursor = usb_advance(usb_out_write_cursor, USB_SAMPLE_CNT);
+	usb_out_write_cursor = usb_advance(usb_out_write_cursor, usb_out_slot_frames);
 
 	/* Move any stream that is about to be overwritten forwards */
 	bap_foreach_stream(stream_cb, NULL);
