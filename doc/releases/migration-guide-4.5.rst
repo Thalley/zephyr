@@ -256,6 +256,16 @@ Boards
 * The Nordic nRF53 Kconfig option ``CONFIG_BOARD_ENABLE_CPUNET`` has been removed. Use
   :kconfig:option:`CONFIG_SOC_NRF53_CPUNET_ENABLE` instead.
 
+* The ``esp_threadbr_ethernet`` shield has been removed. Existing users should
+  build for ``esp_threadbr/esp32s3/procpu/ethernet`` instead of combining
+  ``esp_threadbr/esp32s3/procpu`` with ``SHIELD=esp_threadbr_ethernet``.
+  Along with the shield, the ``esp_threadbr`` sub-board connector description
+  has been removed, so the ``espressif,esp-threadbr-header`` binding, the
+  ``esp_threadbr_header`` GPIO nexus node and the ``esp_threadbr_spi`` and
+  ``esp_threadbr_i2c`` devicetree labels are gone. Out-of-tree overlays using
+  them have to reference the SoC nodes (``&spi2``, ``&i2c0``, ``&gpio0``,
+  ``&gpio1``) directly. (:github:`116956`)
+
 Device Drivers and Devicetree
 *****************************
 
@@ -932,6 +942,34 @@ NXP
 
     /* After */
     #include <nxp/imxrt/imxrt118x/nxp_rt1186_cm7.dtsi>
+
+* The NXP SoC pin control headers under the ``hal_nxp`` ``dts/nxp/`` tree were
+  reorganized to mirror the ``dts/arm/nxp/<family>/<series>/`` layout: every
+  SoC ``*-pinctrl.h`` / ``*-pinctrl.dtsi`` file moved into a ``pinctrl/``
+  subdirectory. Out-of-tree boards that include these SoC pin control headers
+  directly must update their includes.
+
+  The families that are series-organized (i.MX RT, Kinetis, LPC, MCX) place
+  their headers in ``<family>/<series>/pinctrl/``; the families that are flat
+  (i.MX, S32, RW) place theirs in a family-level ``<family>/pinctrl/``
+  directory. Kinetis additionally adds new series directories (``k0x``,
+  ``km3x``, ``kv3x``) for parts that had none. In addition the former
+  ``nxp_imx`` directory was split: ``nxp_imx/rt/`` became the ``imxrt/`` family
+  and the remaining i.MX application processors became the flat ``imx/`` family.
+
+  Examples:
+
+  .. code-block:: dts
+
+    /* Before */
+    #include <nxp/nxp_imx/rt/mimxrt1151dvm8b-pinctrl.dtsi>
+    #include <nxp/nxp_imx/mimx8ml8dvnlz-pinctrl.dtsi>
+    #include <nxp/kinetis/MK64FN1M0VLL12-pinctrl.h>
+
+    /* After */
+    #include <nxp/imxrt/imxrt11xx/pinctrl/mimxrt1151dvm8b-pinctrl.dtsi>
+    #include <nxp/imx/pinctrl/mimx8ml8dvnlz-pinctrl.dtsi>
+    #include <nxp/kinetis/k6x/pinctrl/MK64FN1M0VLL12-pinctrl.h>
 
 PWM
 ===
@@ -1869,6 +1907,13 @@ Random
   Use :kconfig:option:`CONFIG_PSA_CSPRNG_GENERATOR` instead.
 
 * ``CONFIG_CS_CTR_DRBG_PERSONALIZATION`` has been removed. It did not have any effect.
+
+Shell
+=====
+
+* The ``kernel log_level <module> <severity>`` shell command, deprecated since Zephyr v4.1.0,
+  has been removed. Use ``log enable <severity> <module>`` instead: the arguments are reversed
+  and the severity is a name (``none``, ``err``, ``wrn``, ``inf``, ``dbg``), not a number.
 
 Stream Flash
 ============

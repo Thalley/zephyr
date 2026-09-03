@@ -287,7 +287,7 @@ static void usb_data_request(const struct device *dev)
 		}
 
 		cnt++;
-		LOG_INF_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB audio", cnt);
+		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB audio", cnt);
 	} else {
 		static size_t cnt;
 
@@ -490,7 +490,7 @@ void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_c
 	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
 
 	cnt++;
-	LOG_INF_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Added USB audio frame", cnt);
+	LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Added USB audio frame", cnt);
 }
 #endif /* CONFIG_BT_AUDIO_RX */
 

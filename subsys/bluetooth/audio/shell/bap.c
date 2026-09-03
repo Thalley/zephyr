@@ -402,7 +402,7 @@ static bool encode_frame(struct shell_stream *sh_stream, uint8_t index, size_t f
 		stride = 1;
 	}
 
-	if ((sh_stream->tx.encoded_cnt % bap_stats_interval) == 0) {
+	if (bap_stats_interval > 0U && (sh_stream->tx.encoded_cnt % bap_stats_interval) == 0) {
 		bt_shell_print("[%zu]: Encoding frame of size %u (%u/%u)",
 			       sh_stream->tx.encoded_cnt, octets_per_frame, frame_cnt + 1,
 			       total_frames);
@@ -520,7 +520,7 @@ static void lc3_audio_send_data(struct shell_stream *sh_stream)
 		return;
 	}
 
-	if ((sh_stream->tx.lc3_sdu_cnt % bap_stats_interval) == 0U) {
+	if (bap_stats_interval > 0U && (sh_stream->tx.lc3_sdu_cnt % bap_stats_interval) == 0U) {
 		bt_shell_info("[%zu]: stream %p : TX LC3: %zu (seq_num %u)",
 			      sh_stream->tx.lc3_sdu_cnt, bap_stream, tx_sdu_len,
 			      sh_stream->tx.seq_num);
@@ -2613,13 +2613,15 @@ static bool decode_frame(struct lc3_data *data, size_t frame_cnt, int16_t *pcm, 
 	if (data->do_plc) {
 		iso_data = NULL; /* perform PLC */
 
-		if ((sh_stream->rx.decoded_cnt % bap_stats_interval) == 0) {
+		if (bap_stats_interval > 0U &&
+		    (sh_stream->rx.decoded_cnt % bap_stats_interval) == 0) {
 			bt_shell_print("[%zu]: Performing PLC", sh_stream->rx.decoded_cnt);
 		}
 	} else {
 		iso_data = net_buf_pull_mem(data->buf, octets_per_frame);
 
-		if ((sh_stream->rx.decoded_cnt % bap_stats_interval) == 0) {
+		if (bap_stats_interval > 0U &&
+		    (sh_stream->rx.decoded_cnt % bap_stats_interval) == 0) {
 			bt_shell_print("[%zu]: Decoding frame of size %u (%u/%u)",
 				       sh_stream->rx.decoded_cnt, octets_per_frame, frame_cnt + 1,
 				       total_frames);
@@ -2792,7 +2794,7 @@ static void audio_recv(struct bt_bap_stream *stream,
 		sh_stream->rx.lost_pkts++;
 	}
 
-	if ((sh_stream->rx.rx_cnt % bap_stats_interval) == 0) {
+	if (bap_stats_interval > 0U && (sh_stream->rx.rx_cnt % bap_stats_interval) == 0) {
 		bt_shell_print(
 			"[%zu]: Incoming audio on stream %p len %u ts %u seq_num %u flags %u "
 			"(valid %zu, dup ts %zu, dup psn %zu, err_pkts %zu, lost_pkts %zu, "
@@ -3157,6 +3159,8 @@ static void clear_stream_data(struct shell_stream *sh_stream)
 #endif /* CONFIG_BT_BAP_BROADCAST_SINK */
 
 #if defined(CONFIG_BT_AUDIO_RX)
+	/* TODO: Need to wait for LC3 to finish using a mutex before clearing the LC3 encoder and
+	 * decoder */
 	if (sh_stream->is_rx) {
 		rx_streaming_cnt--;
 		memset(&sh_stream->rx, 0, sizeof(sh_stream->rx));
@@ -4225,12 +4229,6 @@ static int cmd_bap_stats(const struct shell *sh, size_t argc, char *argv[])
 		interval = shell_strtoul(argv[1], 0, &err);
 		if (err != 0) {
 			shell_error(sh, "Could not parse interval: %d", err);
-
-			return -ENOEXEC;
-		}
-
-		if (interval == 0U) {
-			shell_error(sh, "Interval cannot be 0");
 
 			return -ENOEXEC;
 		}

@@ -213,7 +213,7 @@ manifest:
       groups:
         - hal
     - name: hal_nxp
-      revision: 8723557b8d1b1629941cd2697a59d71bee0538b8
+      revision: 14d44be6e81e0e98582f9bf3eb202e055309badf
       path: modules/hal/nxp
       groups:
         - hal
@@ -264,7 +264,7 @@ manifest:
       groups:
         - hal
     - name: hal_tdk
-      revision: 0f209bd0a4b6511c8c6ffddda75da1fe6988df8f
+      revision: 6a2669c3d82dc1a9f7e9ca4acc260f261688cfc0
       path: modules/hal/tdk
       groups:
         - hal
@@ -319,7 +319,7 @@ manifest:
       revision: a8ddc544043e72807cf7db532478e1dda734ae7c
       path: modules/lib/lora-basics-modem
     - name: loramac-node
-      revision: fb00b383072518c918e2258b0916c996f2d4eebe
+      revision: 874544f2a8a0212a0cc12e5eea51a024fd3d93d1
       path: modules/lib/loramac-node
     - name: lvgl
       revision: d1fe35d350a1503db2ec7fd4dfff8e0cc26eea7e
@@ -373,7 +373,7 @@ manifest:
       path: modules/lib/picolibc
       revision: 01254932e8e81085817ed61fd858648584ffe37c
     - name: psa-arch-tests
-      revision: 588572c0ebd835c7e0929eaf3007d4fbadb47b5b
+      revision: 3ce2420dd321c86928b40d33a8f799f5138469d3
       path: modules/tee/tf-m/psa-arch-tests
       groups:
         - testing
