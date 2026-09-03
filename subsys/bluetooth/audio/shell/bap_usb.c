@@ -197,11 +197,21 @@ static size_t usb_in_right_write_cursor;
 static size_t usb_in_read_cursor;
 static bool usb_in_left_active;
 static bool usb_in_right_active;
+/* Number of consecutive underruns, used to bound how long a single starving channel may hold
+ * back a channel that is still producing data
+ */
+static size_t usb_in_underrun_cnt;
 
 /* Amount of data to keep between the read cursor and a write cursor, to absorb the jitter of the
  * incoming SDUs. Also used as the target when a channel has to be resynchronized.
  */
 #define USB_IN_TARGET_PREFILL_FRAMES (USB_MAX_FRAMES_PER_LC3_FRAME * 2U) /* 20ms */
+
+/* Number of consecutive underruns after which a starving channel is sent as silence rather than
+ * blocking the channels that do produce data. A stream that stops without being deactivated would
+ * otherwise mute the other channel indefinitely.
+ */
+#define USB_IN_MAX_UNDERRUNS 100U /* 100ms */
 
 /* usb_in_data_mutex guards usb_in_ring_buf and all of the cursors and flags above */
 static K_MUTEX_DEFINE(usb_in_data_mutex);
@@ -219,6 +229,8 @@ static void usb_data_request(const struct device *dev)
 	int16_t *pcm_buf;
 	bool left_active;
 	bool right_active;
+	bool starving = false;
+	bool give_up;
 	bool have_data;
 	int err;
 
@@ -231,24 +243,34 @@ static void usb_data_request(const struct device *dev)
 	left_active = usb_in_left_active;
 	right_active = usb_in_right_active;
 
-	/* Only consume data that every active channel has produced. A channel that is not active
-	 * never produces anything, so it does not hold back the other channel.
+	/* A channel that has starved for too long is ignored entirely, so that a channel which
+	 * does produce data is not held back indefinitely. This bounds the effect of a producer
+	 * that stops without deactivating its channel.
 	 */
-	have_data = (left_active || right_active) &&
-		    (!left_active ||
-		     usb_in_chan_fill(usb_in_left_write_cursor) >= USB_SAMPLE_CNT) &&
-		    (!right_active ||
-		     usb_in_chan_fill(usb_in_right_write_cursor) >= USB_SAMPLE_CNT);
+	give_up = usb_in_underrun_cnt >= USB_IN_MAX_UNDERRUNS;
+
+	if (left_active && usb_in_chan_fill(usb_in_left_write_cursor) < USB_SAMPLE_CNT) {
+		left_active = !give_up;
+		starving = true;
+	}
+
+	if (right_active && usb_in_chan_fill(usb_in_right_write_cursor) < USB_SAMPLE_CNT) {
+		right_active = !give_up;
+		starving = true;
+	}
+
+	/* Only consume data that every channel that is still considered active has produced */
+	have_data = (left_active || right_active) && (!starving || give_up);
 
 	if (have_data) {
 		static size_t cnt;
 
 		pcm_buf = &usb_in_ring_buf[usb_in_read_cursor * USB_CHANNELS];
 
-		/* If only a single channel is active we duplicate it to both. This is the only
-		 * per-sample operation left on this path, and only happens for mono streams.
-		 */
 		if (left_active != right_active) {
+			/* Duplicate the single active channel to both. This is the only per-sample
+			 * operation left on this path.
+			 */
 			const size_t src = left_active ? 0U : 1U;
 			const size_t dst = left_active ? 1U : 0U;
 
@@ -260,6 +282,10 @@ static void usb_data_request(const struct device *dev)
 
 		usb_in_read_cursor = usb_advance(usb_in_read_cursor, USB_SAMPLE_CNT);
 
+		if (!starving) {
+			usb_in_underrun_cnt = 0U;
+		}
+
 		cnt++;
 		LOG_INF_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB audio", cnt);
 	} else {
@@ -270,6 +296,10 @@ static void usb_data_request(const struct device *dev)
 		 */
 		pcm_buf = usb_in_silence;
 		(void)memset(pcm_buf, 0, USB_STEREO_FRAME_SIZE);
+
+		if (usb_in_underrun_cnt < USB_IN_MAX_UNDERRUNS) {
+			usb_in_underrun_cnt++;
+		}
 
 		cnt++;
 		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending silent USB audio", cnt);
@@ -359,6 +389,8 @@ void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc)
 	} else {
 		usb_in_left_active = false;
 	}
+
+	usb_in_underrun_cnt = 0U;
 
 	err = k_mutex_unlock(&usb_in_data_mutex);
 	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);

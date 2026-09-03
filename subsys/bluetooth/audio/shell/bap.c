@@ -2547,7 +2547,6 @@ struct lc3_data {
 	void *fifo_reserved; /* 1st word reserved for use by FIFO */
 	struct net_buf *buf;
 	struct shell_stream *sh_stream;
-	uint32_t ts;
 	bool do_plc;
 };
 
@@ -2846,11 +2845,6 @@ static void audio_recv(struct bt_bap_stream *stream,
 
 		data->buf = net_buf_ref(buf);
 		data->sh_stream = sh_stream;
-		if (info->flags & BT_ISO_FLAGS_TS) {
-			data->ts = info->ts;
-		} else {
-			data->ts = 0U;
-		}
 
 		k_fifo_put(&lc3_in_fifo, data);
 	}
@@ -3089,7 +3083,14 @@ static void stream_started_cb(struct bt_bap_stream *bap_stream)
 #if defined(CONFIG_LIBLC3)
 static void update_usb_streams_cb(struct shell_stream *sh_stream, void *user_data)
 {
-	ARG_UNUSED(user_data);
+	const struct shell_stream *stopped_stream = user_data;
+
+	/* is_rx is not cleared until after this runs, so the stream that is being torn down
+	 * would otherwise elect itself again and then never produce any data
+	 */
+	if (sh_stream == stopped_stream) {
+		return;
+	}
 
 	if (sh_stream->is_rx) {
 		if (usb_left_stream == NULL &&
@@ -3132,7 +3133,7 @@ static void update_usb_streams(struct shell_stream *sh_stream)
 
 		if (usb_stream_cleared) {
 			/* Another stream may be able to take over the freed channel */
-			bap_foreach_stream(update_usb_streams_cb, NULL);
+			bap_foreach_stream(update_usb_streams_cb, sh_stream);
 		}
 	}
 }
