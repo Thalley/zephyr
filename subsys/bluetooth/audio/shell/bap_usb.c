@@ -80,6 +80,18 @@ LOG_MODULE_REGISTER(bap_usb, CONFIG_BT_BAP_STREAM_LOG_LEVEL);
 #define USB_RING_FRAMES       (USB_RING_ALIGN_FRAMES * 2U) /* 60ms */
 #define USB_RING_SAMPLES      (USB_RING_FRAMES * USB_CHANNELS)
 
+/* Cursors count frames monotonically rather than modulo USB_RING_FRAMES, and are only reduced to
+ * a ring buffer index when the buffer is actually addressed. If they wrapped with the ring, a
+ * consumer that did not sample often enough could miss the producer lapping it entirely: the
+ * distance would pass through the detection band and come back looking small. With a modulus
+ * this much larger than the ring, a lap is detectable for hours rather than for the ~10ms it
+ * takes the producer to cross the ring.
+ *
+ * The modulus is a multiple of USB_RING_FRAMES so that reducing a cursor to an index is
+ * continuous across the wrap, and it stays below INT32_MAX so that it fits an atomic_t.
+ */
+#define USB_CURSOR_MODULUS (USB_RING_FRAMES * 524288U)
+
 /* Maximum number of USB frames covered by a single LC3 frame */
 #define USB_MAX_FRAMES_PER_LC3_FRAME                                                               \
 	((LC3_MAX_FRAME_DURATION_US * USB_SAMPLE_RATE) / USEC_PER_SEC)
@@ -92,6 +104,11 @@ BUILD_ASSERT((USB_RING_ALIGN_FRAMES % USB_MAX_FRAMES_PER_LC3_FRAME) == 0U,
 	     "An LC3 frame must never straddle the end of a ring buffer");
 BUILD_ASSERT((USB_STEREO_FRAME_SIZE % USB_BUF_GRANULARITY) == 0U,
 	     "USB transfers out of the ring buffers must be a multiple of the DMA granularity");
+BUILD_ASSERT((USB_CURSOR_MODULUS % USB_RING_FRAMES) == 0U,
+	     "Reducing a cursor to a ring buffer index must be continuous across the wrap");
+BUILD_ASSERT(USB_CURSOR_MODULUS <= (size_t)INT32_MAX, "A cursor must fit an atomic_t");
+BUILD_ASSERT(USB_CURSOR_MODULUS > (USB_RING_FRAMES * 2U),
+	     "The cursor modulus must be large enough to make a lap detectable");
 
 #define IN_TERMINAL_ID  UAC2_ENTITY_ID(DT_NODELABEL(in_terminal))
 #define OUT_TERMINAL_ID UAC2_ENTITY_ID(DT_NODELABEL(out_terminal))
@@ -109,6 +126,14 @@ size_t bap_usb_get_read_cnt(const struct shell_stream *sh_stream)
 	return (USB_SAMPLE_CNT * sh_stream->lc3_frame_duration_us) / USEC_PER_MSEC;
 }
 
+/** Reduce a monotonic cursor to an index into the ring buffers, in frames */
+static size_t usb_ring_index(size_t cursor)
+{
+	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
+
+	return cursor % USB_RING_FRAMES;
+}
+
 /**
  * Round @p frames down to a multiple of @p step, so that a cursor that is snapped to another
  * cursor keeps the alignment that the ring buffer sizing relies on.
@@ -121,26 +146,26 @@ static size_t usb_align_down(size_t frames, size_t step)
 	return frames - (frames % step);
 }
 
-/** Number of frames from @p from to @p to, going forwards through the ring buffer */
+/** Number of frames produced between @p from and @p to */
 static size_t usb_frames_between(size_t from, size_t to)
 {
 	if (to >= from) {
 		return to - from;
 	}
 
-	return to + (USB_RING_FRAMES - from);
+	return to + (USB_CURSOR_MODULUS - from);
 }
 
-/** Advance @p cursor by @p frames, wrapping around the end of the ring buffer */
+/** Advance @p cursor by @p frames */
 static size_t usb_advance(size_t cursor, size_t frames)
 {
 	cursor += frames;
 
-	if (cursor >= USB_RING_FRAMES) {
-		cursor -= USB_RING_FRAMES;
+	if (cursor >= USB_CURSOR_MODULUS) {
+		cursor -= USB_CURSOR_MODULUS;
 	}
 
-	__ASSERT(cursor < USB_RING_FRAMES, "Invalid cursor %zu", cursor);
+	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
 
 	return cursor;
 }
@@ -280,7 +305,7 @@ static void usb_data_request(const struct device *dev)
 	if (have_data) {
 		static size_t cnt;
 
-		pcm_buf = &usb_in_ring_buf[read_cursor * USB_CHANNELS];
+		pcm_buf = &usb_in_ring_buf[usb_ring_index(read_cursor) * USB_CHANNELS];
 
 		if (left_active != right_active) {
 			/* Duplicate the single active channel to both. This is the only per-sample
@@ -424,7 +449,7 @@ static size_t usb_in_resync(enum bt_audio_location chan_alloc, size_t sample_cnt
 	for (size_t i = 0U; i < silence_cnt; i++) {
 		const size_t frame = usb_advance(read_cursor, i);
 
-		usb_in_ring_buf[(frame * USB_CHANNELS) + chan_offset] = 0;
+		usb_in_ring_buf[(usb_ring_index(frame) * USB_CHANNELS) + chan_offset] = 0;
 	}
 
 	return cursor;
@@ -451,18 +476,24 @@ int16_t *bap_usb_claim_in_frame(enum bt_audio_location chan_alloc, size_t sample
 	 * so far ahead that it is about to overwrite data that has not been sent yet, or if it is
 	 * not aligned to its own frame size.
 	 */
-	if (atomic_set(usb_in_needs_resync(chan_alloc), 0) == 1 || fill < sample_cnt ||
+	if (atomic_get(usb_in_needs_resync(chan_alloc)) == 1 || fill < sample_cnt ||
 	    fill > (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
 	    (cursor % sample_cnt) != 0U) {
 		cursor = usb_in_resync(chan_alloc, sample_cnt);
 		atomic_set(cursor_ptr, (atomic_val_t)cursor);
+
+		/* Cleared last, so that the consumer never sees a cleared flag together with the
+		 * stale write cursor that the flag exists to hide
+		 */
+		atomic_set(usb_in_needs_resync(chan_alloc), 0);
 
 		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
 				       "Resynchronized USB IN channel 0x%08X (fill was %zu)",
 				       (uint32_t)chan_alloc, fill);
 	}
 
-	return &usb_in_ring_buf[(cursor * USB_CHANNELS) + usb_in_chan_offset(chan_alloc)];
+	return &usb_in_ring_buf[(usb_ring_index(cursor) * USB_CHANNELS) +
+				usb_in_chan_offset(chan_alloc)];
 }
 
 void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt)
@@ -520,19 +551,24 @@ static void usb_out_terminal_disabled(void)
 	 * become available again
 	 */
 	usb_out_pending_cursor = (size_t)atomic_get(&usb_out_write_cursor);
-	usb_out_slot_frames = USB_SAMPLE_CNT;
+
+	/* The write cursor is only aligned to the slot size that was in use, so invalidate the
+	 * slot size to force usb_get_recv_buf_cb() to realign when the terminal is enabled again
+	 */
+	usb_out_slot_frames = 0U;
 }
 
 /** Move @p cursor @p frames backwards, wrapping around the start of the ring buffer */
 static size_t usb_retreat(size_t cursor, size_t frames)
 {
 	__ASSERT(frames <= USB_RING_FRAMES, "Invalid frame count %zu", frames);
+	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
 
 	if (cursor >= frames) {
 		return cursor - frames;
 	}
 
-	return cursor + (USB_RING_FRAMES - frames);
+	return cursor + (USB_CURSOR_MODULUS - frames);
 }
 
 /** Number of frames that @p sh_stream can still read before catching up with the producer */
@@ -635,7 +671,7 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 	/* Hand out the next unused slot in the ring buffer, so that the USB DMA writes directly
 	 * into it. The slot is committed by usb_data_recv_cb().
 	 */
-	buf = &usb_out_ring_buf[usb_out_pending_cursor * USB_CHANNELS];
+	buf = &usb_out_ring_buf[usb_ring_index(usb_out_pending_cursor) * USB_CHANNELS];
 	usb_out_pending_cursor = usb_advance(usb_out_pending_cursor, frame_cnt);
 
 	return buf;
@@ -651,7 +687,10 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 	ARG_UNUSED(terminal);
 	ARG_UNUSED(user_data);
 
-	if (buf == NULL) {
+	if (buf == NULL || usb_out_slot_frames == 0U) {
+		/* No slot was handed out for this buffer, e.g. because the terminal was disabled
+		 * in between, so there is nothing to commit
+		 */
 		return;
 	}
 
@@ -743,13 +782,13 @@ const int16_t *bap_usb_claim_frame_block(struct shell_stream *sh_stream)
 	__ASSERT((sh_stream->tx.usb_read_cursor % read_cnt) == 0U,
 		 "Misaligned cursor %zu for read count %zu", sh_stream->tx.usb_read_cursor,
 		 read_cnt);
-	__ASSERT(sh_stream->tx.usb_read_cursor < USB_RING_FRAMES, "Invalid cursor %zu",
+	__ASSERT(sh_stream->tx.usb_read_cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu",
 		 sh_stream->tx.usb_read_cursor);
 
 	/* The ring buffer size is a multiple of read_cnt, so the frame block never straddles the
 	 * end of the ring buffer and can be handed to liblc3 as-is.
 	 */
-	return &usb_out_ring_buf[sh_stream->tx.usb_read_cursor * USB_CHANNELS];
+	return &usb_out_ring_buf[usb_ring_index(sh_stream->tx.usb_read_cursor) * USB_CHANNELS];
 }
 
 void bap_usb_release_frame_block(struct shell_stream *sh_stream)
