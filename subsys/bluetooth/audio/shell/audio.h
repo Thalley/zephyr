@@ -121,6 +121,8 @@ struct shell_stream {
 			bool active;
 			size_t encoded_cnt;
 			size_t lc3_sdu_cnt;
+			/* Number of SDUs dropped because no TX buffer was available */
+			size_t lc3_alloc_fail_cnt;
 			lc3_encoder_mem_48k_t lc3_encoder_mem;
 			lc3_encoder_t lc3_encoder;
 #if defined(CONFIG_USBD_AUDIO2_CLASS)
