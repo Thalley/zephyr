@@ -900,7 +900,7 @@ def _add_reviewers(gh, gh_repo, pr, args, collab: list):
     # Anyone the review request could not accommodate still gets asked, by
     # name, in a comment.  Users who removed themselves are deliberately not
     # mentioned: they opted out, and a mention would route around that.
-    _mention_reviewers(pr, args, non_collaborators + unrequested)
+    _mention_reviewers(gh, pr, args, non_collaborators + unrequested)
 
 
 def _request_reviews(pr, args, reviewers: list) -> list:
@@ -964,7 +964,7 @@ def _request_reviews(pr, args, reviewers: list) -> list:
     return unrequested
 
 
-def _mention_reviewers(pr, args, logins: list):
+def _mention_reviewers(gh, pr, args, logins: list):
     """Ask *logins* for a review in a PR comment.
 
     Used for people who cannot receive a formal review request: those who are
@@ -983,7 +983,7 @@ def _mention_reviewers(pr, args, logins: list):
     logins = list(dict.fromkeys(logins))
     if not logins:
         if not args.dry_run:
-            _delete_mention_comment(pr)
+            _delete_mention_comment(gh, pr)
         return
 
     mentions = " ".join(f"@{login}" for login in logins)
@@ -1015,11 +1015,15 @@ def _mention_reviewers(pr, args, logins: list):
         logger.error("Failed to mention reviewers %s: %s", logins, exc)
 
 
-def _delete_mention_comment(pr):
+def _delete_mention_comment(gh, pr):
     """Delete the reviewer-mention comment left by an earlier run, if any."""
     try:
+        bot_login = gh.get_user().login
         for comment in pr.get_issue_comments():
-            if MENTION_MARKER in comment.body:
+            if (
+                MENTION_MARKER in comment.body
+                and getattr(comment.user, 'login', None) == bot_login
+            ):
                 logger.info("Deleting obsolete reviewer-mention comment")
                 comment.delete()
                 return

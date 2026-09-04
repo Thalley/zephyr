@@ -570,7 +570,8 @@ def _make_process_pr_harness(areas_per_file, pr_user="someone"):
     # _add_reviewers which stores them in a set).
     user_cache = {}
 
-    def _get_user(login):
+    def _get_user(login=None):
+        login = "copilot-bot" if login is None else login
         if login not in user_cache:
             u = MagicMock()
             u.login = login
@@ -1232,7 +1233,8 @@ def _make_add_reviewers_stubs(author="author"):
 
     cache = {}
 
-    def _get_user(login):
+    def _get_user(login=None):
+        login = "copilot-bot" if login is None else login
         if login not in cache:
             user = MagicMock()
             user.login = login
@@ -1771,6 +1773,7 @@ def _mentioned(pr):
 def _existing_comment(body):
     comment = MagicMock()
     comment.body = body
+    comment.user = SimpleNamespace(login="copilot-bot")
     return comment
 
 
