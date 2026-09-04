@@ -913,11 +913,11 @@ def _request_reviews(pr, args, reviewers: list) -> list:
     of this script picked them up -- the reason a PR ended up with only a
     subset of its reviewers on the first run.
 
-    A rejected batch is retried one user at a time, so that a single bad
-    candidate (a deleted account, or someone who lost collaborator status
-    between the check and the request) cannot cost the whole batch its
-    reviewers.  Whoever is left out is returned for the caller to mention
-    instead.
+    A validation-rejected batch (HTTP 422) is retried one user at a time, so
+    that a single bad candidate (a deleted account, or someone who lost
+    collaborator status between the check and the request) cannot cost the
+    whole batch its reviewers.  Systemic failures are not fanned out: the
+    failed batch and any remaining batches are returned for mention fallback.
     """
     if args.dry_run:
         return []
@@ -936,6 +936,17 @@ def _request_reviews(pr, args, reviewers: list) -> list:
             continue
         except GithubException as exc:
             logger.error("Failed to add reviewers %s: %s", batch, exc)
+            status = getattr(exc, "status", None)
+
+        if status != 422:
+            logger.error(
+                "Stopping reviewer requests after systemic API failure (HTTP %s)",
+                status,
+            )
+            unrequested += batch
+            for remaining in batches[index + 1 :]:
+                unrequested += remaining
+            break
 
         if len(batch) == 1:
             unrequested += batch

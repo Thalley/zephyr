@@ -1338,7 +1338,9 @@ class TestReviewRequestBatching:
 
         def _reject_bulk(reviewers):
             if len(reviewers) > 1:
-                raise sut.GithubException("nope")
+                exc = sut.GithubException("nope")
+                exc.status = 422
+                raise exc
 
         pr.create_review_request.side_effect = lambda reviewers: _reject_bulk(reviewers)
 
@@ -1352,7 +1354,9 @@ class TestReviewRequestBatching:
 
         def _reject(reviewers):
             if len(reviewers) > 1 or reviewers == ["bad"]:
-                raise sut.GithubException("nope")
+                exc = sut.GithubException("nope")
+                exc.status = 422
+                raise exc
 
         pr.create_review_request.side_effect = lambda reviewers: _reject(reviewers)
 
@@ -1360,14 +1364,16 @@ class TestReviewRequestBatching:
 
         assert _mentioned(pr) == ["bad"]
 
-    def test_a_failing_batch_does_not_stop_the_others(self):
+    def test_validation_failure_does_not_stop_the_others(self):
         gh, gh_repo, pr, args = _make_add_reviewers_stubs()
         candidates = [f"u{i}" for i in range(25)]
         first = set(candidates[: sut.REVIEWER_REQUEST_BATCH])
 
         def _reject_first_batch(reviewers):
             if set(reviewers) <= first:
-                raise sut.GithubException("nope")
+                exc = sut.GithubException("nope")
+                exc.status = 422
+                raise exc
 
         pr.create_review_request.side_effect = lambda reviewers: _reject_first_batch(reviewers)
 
@@ -1377,6 +1383,22 @@ class TestReviewRequestBatching:
             login for login in _reviewers_requested(pr) if login not in first
         ]
         assert _mentioned(pr) == candidates[: sut.REVIEWER_REQUEST_BATCH]
+
+    def test_systemic_failure_stops_following_batches(self):
+        gh, gh_repo, pr, args = _make_add_reviewers_stubs()
+        candidates = [f"u{i}" for i in range(25)]
+
+        def _always_fail(_reviewers):
+            exc = sut.GithubException("nope")
+            exc.status = 500
+            raise exc
+
+        pr.create_review_request.side_effect = lambda reviewers: _always_fail(reviewers)
+
+        sut._add_reviewers(gh, gh_repo, pr, args, candidates)
+
+        assert pr.create_review_request.call_count == 1
+        assert _mentioned(pr) == candidates
 
     def test_failing_request_does_not_raise(self):
         gh, gh_repo, pr, args = _make_add_reviewers_stubs()
