@@ -192,6 +192,14 @@ static void ase_free(struct bt_ascs_ase *ase)
 
 	(void)k_work_cancel_delayable(&ase->disconnect_work);
 	(void)k_work_cancel_delayable(&ase->state_transition_work);
+
+	/* The above cancellations are not guaranteed to be effective if the work is already
+	 * running, as the ASE work runs on the system workqueue and this function may be called
+	 * from another context (e.g. from the ACL disconnected callback on the Bluetooth
+	 * workqueue). Reset the states so that any such work sees a consistent idle ASE.
+	 */
+	ase->ep.state = BT_BAP_EP_STATE_IDLE;
+	ase->state_pending = BT_BAP_EP_STATE_IDLE;
 }
 
 static int ase_state_notify(struct bt_ascs_ase *ase)
@@ -577,6 +585,15 @@ static void state_transition_work_handler(struct k_work *work)
 	const enum bt_bap_ep_state old_state = ase->ep.state;
 	int err;
 
+	if (ase->conn == NULL) {
+		/* The ASE was freed after this work was submitted, and the work could not be
+		 * cancelled by ase_free as it was already running
+		 */
+		LOG_DBG("ase %p is no longer in use", ase);
+
+		return;
+	}
+
 	ase->ep.state = new_state;
 
 	/* Notify ASE state */
@@ -611,6 +628,15 @@ static void state_transition_work_handler(struct k_work *work)
 
 	LOG_DBG("ase %p ep %p id 0x%02x %s -> %s", ase, &ase->ep, ASE_ID(ase),
 		bt_bap_ep_state_str(old_state), bt_bap_ep_state_str(new_state));
+
+	if (ase->conn == NULL) {
+		/* The ASE was freed while ase_state_notify was blocking, and ase_free reset the
+		 * state that was set above
+		 */
+		LOG_DBG("ase %p is no longer in use", ase);
+
+		return;
+	}
 
 	execute_post_state_transition(ase, old_state);
 }
