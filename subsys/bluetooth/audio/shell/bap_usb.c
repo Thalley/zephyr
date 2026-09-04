@@ -25,11 +25,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/__assert.h>
-#include <zephyr/sys/atomic.h>
-#include <zephyr/sys/barrier.h>
 #include <zephyr/sys/clock.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/util_macro.h>
+#include <zephyr/sys/clock.h>
 #include <zephyr/toolchain.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usbd_uac2.h>
@@ -80,18 +79,6 @@ LOG_MODULE_REGISTER(bap_usb, CONFIG_BT_BAP_STREAM_LOG_LEVEL);
 #define USB_RING_FRAMES       (USB_RING_ALIGN_FRAMES * 2U) /* 60ms */
 #define USB_RING_SAMPLES      (USB_RING_FRAMES * USB_CHANNELS)
 
-/* Cursors count frames monotonically rather than modulo USB_RING_FRAMES, and are only reduced to
- * a ring buffer index when the buffer is actually addressed. If they wrapped with the ring, a
- * consumer that did not sample often enough could miss the producer lapping it entirely: the
- * distance would pass through the detection band and come back looking small. With a modulus
- * this much larger than the ring, a lap is detectable for hours rather than for the ~10ms it
- * takes the producer to cross the ring.
- *
- * The modulus is a multiple of USB_RING_FRAMES so that reducing a cursor to an index is
- * continuous across the wrap, and it stays below INT32_MAX so that it fits an atomic_t.
- */
-#define USB_CURSOR_MODULUS (USB_RING_FRAMES * 524288U)
-
 /* Maximum number of USB frames covered by a single LC3 frame */
 #define USB_MAX_FRAMES_PER_LC3_FRAME                                                               \
 	((LC3_MAX_FRAME_DURATION_US * USB_SAMPLE_RATE) / USEC_PER_SEC)
@@ -104,11 +91,6 @@ BUILD_ASSERT((USB_RING_ALIGN_FRAMES % USB_MAX_FRAMES_PER_LC3_FRAME) == 0U,
 	     "An LC3 frame must never straddle the end of a ring buffer");
 BUILD_ASSERT((USB_STEREO_FRAME_SIZE % USB_BUF_GRANULARITY) == 0U,
 	     "USB transfers out of the ring buffers must be a multiple of the DMA granularity");
-BUILD_ASSERT((USB_CURSOR_MODULUS % USB_RING_FRAMES) == 0U,
-	     "Reducing a cursor to a ring buffer index must be continuous across the wrap");
-BUILD_ASSERT(USB_CURSOR_MODULUS <= (size_t)INT32_MAX, "A cursor must fit an atomic_t");
-BUILD_ASSERT(USB_CURSOR_MODULUS > (USB_RING_FRAMES * 2U),
-	     "The cursor modulus must be large enough to make a lap detectable");
 
 #define IN_TERMINAL_ID  UAC2_ENTITY_ID(DT_NODELABEL(in_terminal))
 #define OUT_TERMINAL_ID UAC2_ENTITY_ID(DT_NODELABEL(out_terminal))
@@ -126,14 +108,6 @@ size_t bap_usb_get_read_cnt(const struct shell_stream *sh_stream)
 	return (USB_SAMPLE_CNT * sh_stream->lc3_frame_duration_us) / USEC_PER_MSEC;
 }
 
-/** Reduce a monotonic cursor to an index into the ring buffers, in frames */
-static size_t usb_ring_index(size_t cursor)
-{
-	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
-
-	return cursor % USB_RING_FRAMES;
-}
-
 /**
  * Round @p frames down to a multiple of @p step, so that a cursor that is snapped to another
  * cursor keeps the alignment that the ring buffer sizing relies on.
@@ -146,26 +120,26 @@ static size_t usb_align_down(size_t frames, size_t step)
 	return frames - (frames % step);
 }
 
-/** Number of frames produced between @p from and @p to */
+/** Number of frames from @p from to @p to, going forwards through the ring buffer */
 static size_t usb_frames_between(size_t from, size_t to)
 {
 	if (to >= from) {
 		return to - from;
 	}
 
-	return to + (USB_CURSOR_MODULUS - from);
+	return to + (USB_RING_FRAMES - from);
 }
 
-/** Advance @p cursor by @p frames */
+/** Advance @p cursor by @p frames, wrapping around the end of the ring buffer */
 static size_t usb_advance(size_t cursor, size_t frames)
 {
 	cursor += frames;
 
-	if (cursor >= USB_CURSOR_MODULUS) {
-		cursor -= USB_CURSOR_MODULUS;
+	if (cursor >= USB_RING_FRAMES) {
+		cursor -= USB_RING_FRAMES;
 	}
 
-	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
+	__ASSERT(cursor < USB_RING_FRAMES, "Invalid cursor %zu", cursor);
 
 	return cursor;
 }
@@ -218,21 +192,13 @@ static int16_t *const usb_in_ring_buf = (int16_t *)usb_in_ring_buf_mem;
  */
 USB_STATIC_BUF_DEFINE(usb_in_silence_mem, USB_STEREO_FRAME_SIZE);
 static int16_t *const usb_in_silence = (int16_t *)usb_in_silence_mem;
-/* Written by the decoder thread, read by the USB SOF handler */
-static atomic_t usb_in_left_write_cursor;
-static atomic_t usb_in_right_write_cursor;
-/* Written by the USB SOF handler, read by the decoder thread */
-static atomic_t usb_in_read_cursor;
-/* Written when a stream starts or stops, read by the USB SOF handler */
-static atomic_t usb_in_left_active;
-static atomic_t usb_in_right_active;
-/* Set when a channel is activated, cleared by the decoder thread once it has placed the write
- * cursor of that channel, which it can only do when it knows the frame size of the stream
- */
-static atomic_t usb_in_left_needs_resync;
-static atomic_t usb_in_right_needs_resync;
+static size_t usb_in_left_write_cursor;
+static size_t usb_in_right_write_cursor;
+static size_t usb_in_read_cursor;
+static bool usb_in_left_active;
+static bool usb_in_right_active;
 /* Number of consecutive underruns, used to bound how long a single starving channel may hold
- * back a channel that is still producing data. Only accessed by the USB SOF handler.
+ * back a channel that is still producing data
  */
 static size_t usb_in_underrun_cnt;
 
@@ -247,27 +213,35 @@ static size_t usb_in_underrun_cnt;
  */
 #define USB_IN_MAX_UNDERRUNS 100U /* 100ms */
 
-/* Each of the cursors above has a single writer, so they are accessed with atomics rather than a
- * lock. This keeps the USB SOF handler free of both blocking and priority inversion.
- */
+/* usb_in_data_mutex guards usb_in_ring_buf and all of the cursors and flags above */
+static K_MUTEX_DEFINE(usb_in_data_mutex);
+#define USB_IN_DATA_MUTEX_TIMEOUT K_MSEC(1)
 
-/** Number of frames that @p write_cursor is ahead of @p read_cursor */
-static size_t usb_in_chan_fill(size_t read_cursor, size_t write_cursor)
+/** Number of frames that @p write_cursor is ahead of the USB read cursor */
+static size_t usb_in_chan_fill(size_t write_cursor)
 {
-	return usb_frames_between(read_cursor, write_cursor);
+	return usb_frames_between(usb_in_read_cursor, write_cursor);
 }
 
 /* USB consumer callback, called every 1ms, consumes USB_SAMPLE_CNT frames from the ring buffer */
 static void usb_data_request(const struct device *dev)
 {
-	const size_t read_cursor = (size_t)atomic_get(&usb_in_read_cursor);
-	bool left_active = atomic_get(&usb_in_left_active) == 1;
-	bool right_active = atomic_get(&usb_in_right_active) == 1;
-	bool starving = false;
 	int16_t *pcm_buf;
+	bool left_active;
+	bool right_active;
+	bool starving = false;
 	bool give_up;
 	bool have_data;
 	int err;
+
+	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_in_data_mutex for USB data request: %d", err);
+		return;
+	}
+
+	left_active = usb_in_left_active;
+	right_active = usb_in_right_active;
 
 	/* A channel that has starved for too long is ignored entirely, so that a channel which
 	 * does produce data is not held back indefinitely. This bounds the effect of a producer
@@ -275,21 +249,12 @@ static void usb_data_request(const struct device *dev)
 	 */
 	give_up = usb_in_underrun_cnt >= USB_IN_MAX_UNDERRUNS;
 
-	/* A channel that has been activated but has not yet placed its first frame has a stale
-	 * write cursor, which could otherwise look like a full ring of valid data
-	 */
-	if (left_active &&
-	    (atomic_get(&usb_in_left_needs_resync) == 1 ||
-	     usb_in_chan_fill(read_cursor, (size_t)atomic_get(&usb_in_left_write_cursor)) <
-		     USB_SAMPLE_CNT)) {
+	if (left_active && usb_in_chan_fill(usb_in_left_write_cursor) < USB_SAMPLE_CNT) {
 		left_active = !give_up;
 		starving = true;
 	}
 
-	if (right_active &&
-	    (atomic_get(&usb_in_right_needs_resync) == 1 ||
-	     usb_in_chan_fill(read_cursor, (size_t)atomic_get(&usb_in_right_write_cursor)) <
-		     USB_SAMPLE_CNT)) {
+	if (right_active && usb_in_chan_fill(usb_in_right_write_cursor) < USB_SAMPLE_CNT) {
 		right_active = !give_up;
 		starving = true;
 	}
@@ -297,15 +262,10 @@ static void usb_data_request(const struct device *dev)
 	/* Only consume data that every channel that is still considered active has produced */
 	have_data = (left_active || right_active) && (!starving || give_up);
 
-	/* Acquire the PCM that the decoder thread published before it advanced the write cursors
-	 * that were read above
-	 */
-	barrier_dmem_fence_full();
-
 	if (have_data) {
 		static size_t cnt;
 
-		pcm_buf = &usb_in_ring_buf[usb_ring_index(read_cursor) * USB_CHANNELS];
+		pcm_buf = &usb_in_ring_buf[usb_in_read_cursor * USB_CHANNELS];
 
 		if (left_active != right_active) {
 			/* Duplicate the single active channel to both. This is the only per-sample
@@ -319,6 +279,8 @@ static void usb_data_request(const struct device *dev)
 					pcm_buf[(i * USB_CHANNELS) + src];
 			}
 		}
+
+		usb_in_read_cursor = usb_advance(usb_in_read_cursor, USB_SAMPLE_CNT);
 
 		if (!starving) {
 			usb_in_underrun_cnt = 0U;
@@ -343,6 +305,9 @@ static void usb_data_request(const struct device *dev)
 		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending silent USB audio", cnt);
 	}
 
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
+
 	err = usbd_uac2_send(dev, IN_TERMINAL_ID, pcm_buf, USB_STEREO_FRAME_SIZE);
 	if (err != 0) {
 		static size_t cnt;
@@ -350,16 +315,6 @@ static void usb_data_request(const struct device *dev)
 		cnt++;
 		LOG_ERR_RATELIMIT_RATE(USB_LOG_RATE, "Failed to send USB audio: %d (%zu)", err,
 				       cnt);
-
-		return;
-	}
-
-	if (have_data) {
-		/* Release the frames only once they have been handed to the USB stack, so that a
-		 * producer cannot overwrite them while they are still in flight
-		 */
-		atomic_set(&usb_in_read_cursor,
-			   (atomic_val_t)usb_advance(read_cursor, USB_SAMPLE_CNT));
 	}
 }
 
@@ -374,7 +329,7 @@ static void usb_buf_release_cb(const struct device *dev, uint8_t terminal, void 
 	/* The buffer is part of usb_in_ring_buf and is not owned by the USB stack */
 }
 
-static atomic_t *usb_in_write_cursor(enum bt_audio_location chan_alloc)
+static size_t *usb_in_write_cursor(enum bt_audio_location chan_alloc)
 {
 	if (chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT) {
 		return &usb_in_right_write_cursor;
@@ -382,15 +337,6 @@ static atomic_t *usb_in_write_cursor(enum bt_audio_location chan_alloc)
 
 	/* Mono is stored in, and sent from, the left channel */
 	return &usb_in_left_write_cursor;
-}
-
-static atomic_t *usb_in_needs_resync(enum bt_audio_location chan_alloc)
-{
-	if (chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT) {
-		return &usb_in_right_needs_resync;
-	}
-
-	return &usb_in_left_needs_resync;
 }
 
 static size_t usb_in_chan_offset(enum bt_audio_location chan_alloc)
@@ -401,13 +347,28 @@ static size_t usb_in_chan_offset(enum bt_audio_location chan_alloc)
 void bap_usb_activate_in_chan(enum bt_audio_location chan_alloc)
 {
 	const bool is_right = chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT;
+	size_t *cursor = usb_in_write_cursor(chan_alloc);
+	int err;
 
-	/* The write cursor is owned by the decoder thread, so it is not placed here. The channel
-	 * is instead marked for resynchronization, which the decoder thread performs on its first
-	 * frame, when the frame size of the stream is known.
+	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN("Failed to lock usb_in_data_mutex to activate channel: %d", err);
+		return;
+	}
+
+	/* Park the cursor at the consumer. The first claim resynchronizes it to the target
+	 * prefill using the frame size of the stream, which is not known here.
 	 */
-	atomic_set(usb_in_needs_resync(chan_alloc), 1);
-	atomic_set(is_right ? &usb_in_right_active : &usb_in_left_active, 1);
+	*cursor = usb_in_read_cursor;
+
+	if (is_right) {
+		usb_in_right_active = true;
+	} else {
+		usb_in_left_active = true;
+	}
+
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
 
 	LOG_INF("Activated USB IN channel 0x%08X", (uint32_t)chan_alloc);
 }
@@ -415,8 +376,24 @@ void bap_usb_activate_in_chan(enum bt_audio_location chan_alloc)
 void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc)
 {
 	const bool is_right = chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT;
+	int err;
 
-	atomic_set(is_right ? &usb_in_right_active : &usb_in_left_active, 0);
+	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN("Failed to lock usb_in_data_mutex to deactivate channel: %d", err);
+		return;
+	}
+
+	if (is_right) {
+		usb_in_right_active = false;
+	} else {
+		usb_in_left_active = false;
+	}
+
+	usb_in_underrun_cnt = 0U;
+
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
 
 	LOG_INF("Deactivated USB IN channel 0x%08X", (uint32_t)chan_alloc);
 }
@@ -427,29 +404,24 @@ void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc)
  *
  * The cursor is rounded up to a multiple of @p sample_cnt so that it stays at or ahead of the
  * consumer, and so that the LC3 frames written from it never straddle the end of the ring buffer.
- *
- * Some of the silence is written to frames that the consumer may be sending concurrently. That is
- * harmless, as this channel has no valid data for those frames either way, and the alternative is
- * to send stale ring buffer content.
  */
 static size_t usb_in_resync(enum bt_audio_location chan_alloc, size_t sample_cnt)
 {
 	const size_t chan_offset = usb_in_chan_offset(chan_alloc);
-	const size_t read_cursor = (size_t)atomic_get(&usb_in_read_cursor);
-	size_t cursor = usb_align_down(read_cursor, sample_cnt);
+	size_t cursor = usb_align_down(usb_in_read_cursor, sample_cnt);
 	size_t silence_cnt;
 
-	if (cursor != read_cursor) {
+	if (cursor != usb_in_read_cursor) {
 		cursor = usb_advance(cursor, sample_cnt);
 	}
 
 	cursor = usb_advance(cursor, usb_align_down(USB_IN_TARGET_PREFILL_FRAMES, sample_cnt));
 
-	silence_cnt = usb_frames_between(read_cursor, cursor);
+	silence_cnt = usb_frames_between(usb_in_read_cursor, cursor);
 	for (size_t i = 0U; i < silence_cnt; i++) {
-		const size_t frame = usb_advance(read_cursor, i);
+		const size_t frame = usb_advance(usb_in_read_cursor, i);
 
-		usb_in_ring_buf[(usb_ring_index(frame) * USB_CHANNELS) + chan_offset] = 0;
+		usb_in_ring_buf[(frame * USB_CHANNELS) + chan_offset] = 0;
 	}
 
 	return cursor;
@@ -457,9 +429,10 @@ static size_t usb_in_resync(enum bt_audio_location chan_alloc, size_t sample_cnt
 
 int16_t *bap_usb_claim_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt)
 {
-	atomic_t *cursor_ptr = usb_in_write_cursor(chan_alloc);
-	size_t cursor;
+	size_t *cursor = usb_in_write_cursor(chan_alloc);
+	int16_t *frame;
 	size_t fill;
+	int err;
 
 	if (sample_cnt == 0U || sample_cnt > USB_MAX_FRAMES_PER_LC3_FRAME ||
 	    (USB_RING_FRAMES % sample_cnt) != 0U) {
@@ -468,43 +441,53 @@ int16_t *bap_usb_claim_in_frame(enum bt_audio_location chan_alloc, size_t sample
 		return NULL;
 	}
 
-	cursor = (size_t)atomic_get(cursor_ptr);
-	fill = usb_in_chan_fill((size_t)atomic_get(&usb_in_read_cursor), cursor);
+	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_in_data_mutex to claim frame: %d", err);
 
-	/* Resynchronize the channel if it has just been activated, if it has fallen behind the
-	 * consumer (which has already sent silence for the data being decoded now), if it has run
-	 * so far ahead that it is about to overwrite data that has not been sent yet, or if it is
-	 * not aligned to its own frame size.
+		return NULL;
+	}
+
+	fill = usb_in_chan_fill(*cursor);
+
+	/* Resynchronize the channel if it has fallen behind the consumer (which has already sent
+	 * silence for the data being decoded now), if it has run so far ahead that it is about to
+	 * overwrite data that has not been sent yet, or if it is not aligned to its own frame size
+	 * (which happens on the first frame after the channel was activated).
 	 */
-	if (atomic_get(usb_in_needs_resync(chan_alloc)) == 1 || fill < sample_cnt ||
-	    fill > (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
-	    (cursor % sample_cnt) != 0U) {
-		cursor = usb_in_resync(chan_alloc, sample_cnt);
-		atomic_set(cursor_ptr, (atomic_val_t)cursor);
-
-		/* Cleared last, so that the consumer never sees a cleared flag together with the
-		 * stale write cursor that the flag exists to hide
-		 */
-		atomic_set(usb_in_needs_resync(chan_alloc), 0);
+	if (fill < sample_cnt || fill > (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
+	    (*cursor % sample_cnt) != 0U) {
+		*cursor = usb_in_resync(chan_alloc, sample_cnt);
 
 		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
 				       "Resynchronized USB IN channel 0x%08X (fill was %zu)",
 				       (uint32_t)chan_alloc, fill);
 	}
 
-	return &usb_in_ring_buf[(usb_ring_index(cursor) * USB_CHANNELS) +
-				usb_in_chan_offset(chan_alloc)];
+	frame = &usb_in_ring_buf[(*cursor * USB_CHANNELS) + usb_in_chan_offset(chan_alloc)];
+
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
+
+	return frame;
 }
 
 void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt)
 {
-	atomic_t *cursor_ptr = usb_in_write_cursor(chan_alloc);
+	size_t *cursor = usb_in_write_cursor(chan_alloc);
 	static size_t cnt;
+	int err;
 
-	/* Publish the decoded PCM before the consumer can observe the advanced cursor */
-	barrier_dmem_fence_full();
-	atomic_set(cursor_ptr,
-		   (atomic_val_t)usb_advance((size_t)atomic_get(cursor_ptr), sample_cnt));
+	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_in_data_mutex to release frame: %d", err);
+		return;
+	}
+
+	*cursor = usb_advance(*cursor, sample_cnt);
+
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
 
 	cnt++;
 	LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Added USB audio frame", cnt);
@@ -520,10 +503,8 @@ void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_c
  */
 USB_STATIC_BUF_DEFINE(usb_out_ring_buf_mem, USB_RING_SAMPLES * USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_out_ring_buf = (int16_t *)usb_out_ring_buf_mem;
-/* Points to the oldest/uninitialized data. Written by the USB OUT callbacks, read by the encoder
- * thread.
- */
-static atomic_t usb_out_write_cursor;
+/* Points to the oldest/uninitialized data */
+static size_t usb_out_write_cursor;
 /* Position that has been handed to the USB stack but not yet received. The UAC2 class may have
  * up to 2 transfers queued at a time, so this may be ahead of usb_out_write_cursor.
  */
@@ -535,96 +516,92 @@ static size_t usb_out_pending_cursor;
 static size_t usb_out_slot_frames = USB_SAMPLE_CNT;
 
 /* Amount of data a stream aims to keep between itself and the write cursor. Used when a stream
- * starts, when it underruns, and when it has to be resynchronized because it was about to be
- * overwritten.
- *
- * This must exceed the amount of PCM that the encoder can consume back to back, which is one SDU
- * per outstanding send credit. The credits are primed to PRIME_COUNT, so a cushion of exactly two
- * SDUs can be emptied by a single burst, leaving the next SDU to underrun.
+ * starts, and when it has to be resynchronized because it was about to be overwritten.
  */
-#define USB_OUT_TARGET_PREFILL_FRAMES (USB_MAX_FRAMES_PER_LC3_FRAME * 3U) /* 30ms */
+#define USB_OUT_TARGET_PREFILL_FRAMES (USB_MAX_FRAMES_PER_LC3_FRAME * 2U) /* 20ms */
 
-/* Number of consecutive underrunning attempts after which a stream rebuilds its cushion. The
- * encoder thread retries roughly every millisecond, so this allows several USB transfers to land
- * before giving up on the stream catching up on its own.
+/* usb_out_data_mutex guards usb_out_ring_buf, the cursors above and shell_stream.tx.usb_read_cursor
  */
-#define USB_OUT_UNDERRUN_PREFILL_THRESHOLD 5U
-
-/* usb_out_write_cursor is written only by the USB OUT callbacks and usb_out_pending_cursor and
- * usb_out_slot_frames are only ever touched by them, so this path needs no lock either. Each
- * consumer owns its own read cursor and evaluates itself in bap_usb_claim_frame_block(), which
- * means the producer never has to walk the streams.
- */
+static K_MUTEX_DEFINE(usb_out_data_mutex);
+#define USB_OUT_DATA_MUTEX_TIMEOUT K_MSEC(1)
 
 static void usb_out_terminal_disabled(void)
 {
+	int err;
+
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN("Failed to lock usb_out_data_mutex to disable terminal: %d", err);
+		return;
+	}
+
 	/* Any queued transfers are discarded by the USB stack, so the slots that were handed out
 	 * become available again
 	 */
-	usb_out_pending_cursor = (size_t)atomic_get(&usb_out_write_cursor);
+	usb_out_pending_cursor = usb_out_write_cursor;
+	usb_out_slot_frames = USB_SAMPLE_CNT;
 
-	/* The write cursor is only aligned to the slot size that was in use, so invalidate the
-	 * slot size to force usb_get_recv_buf_cb() to realign when the terminal is enabled again
-	 */
-	usb_out_slot_frames = 0U;
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
 }
 
 /** Move @p cursor @p frames backwards, wrapping around the start of the ring buffer */
 static size_t usb_retreat(size_t cursor, size_t frames)
 {
 	__ASSERT(frames <= USB_RING_FRAMES, "Invalid frame count %zu", frames);
-	__ASSERT(cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu", cursor);
 
 	if (cursor >= frames) {
 		return cursor - frames;
 	}
 
-	return cursor + (USB_CURSOR_MODULUS - frames);
+	return cursor + (USB_RING_FRAMES - frames);
 }
 
 /** Number of frames that @p sh_stream can still read before catching up with the producer */
 static size_t usb_out_stream_avail(const struct shell_stream *sh_stream)
 {
-	return usb_frames_between(sh_stream->tx.usb_read_cursor,
-				  (size_t)atomic_get(&usb_out_write_cursor));
+	return usb_frames_between(sh_stream->tx.usb_read_cursor, usb_out_write_cursor);
 }
 
-/**
- * Move @p sh_stream forwards to the most recent data if the producer has lapped it, and report
- * how many frames it may read.
- *
- * This is evaluated by the stream itself, rather than by the producer for every stream on every
- * USB transfer, so that the cost is proportional to the number of streams actually reading and
- * so that the producer never touches consumer state.
- */
-static size_t usb_out_stream_sync(struct shell_stream *sh_stream, size_t read_cnt)
+static void stream_cb(struct shell_stream *sh_stream, void *user_data)
 {
-	size_t avail = usb_out_stream_avail(sh_stream);
+	ARG_UNUSED(user_data);
 
-	/* Each stream is evaluated against its own margin, as they may consume at different
-	 * rates, and a stream that is not reading at all must not hold back the producer.
-	 */
-	if (avail > (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME)) {
-		/* Drop the backlog and keep the most recent data, so that the stream does not
-		 * immediately fall behind again
-		 */
-		sh_stream->tx.usb_read_cursor = usb_retreat(
-			usb_align_down((size_t)atomic_get(&usb_out_write_cursor), read_cnt),
-			usb_align_down(USB_OUT_TARGET_PREFILL_FRAMES, read_cnt));
+	if (sh_stream->is_tx && sh_stream->tx.active) {
+		const size_t read_cnt = bap_usb_get_read_cnt(sh_stream);
+		size_t avail;
+
+		if (read_cnt == 0U) {
+			return;
+		}
 
 		avail = usb_out_stream_avail(sh_stream);
 
-		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
-				       "Resynchronized USB OUT stream %p (avail was %zu)",
-				       (void *)sh_stream, avail);
-	}
+		/* If the producer is about to overwrite data that this stream has not consumed
+		 * yet, move the stream forwards to the oldest data that is still valid. Each
+		 * stream is evaluated against its own margin, as they may consume at different
+		 * rates, and a stream that is not reading at all must not hold back the producer.
+		 */
+		if (avail > (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME)) {
+			/* Drop the backlog and keep the most recent data, so that the stream does
+			 * not immediately fall behind again
+			 */
+			sh_stream->tx.usb_read_cursor =
+				usb_retreat(usb_align_down(usb_out_write_cursor, read_cnt),
+					    usb_align_down(USB_OUT_TARGET_PREFILL_FRAMES,
+							   read_cnt));
 
-	return avail;
+			LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
+					       "Resynchronized USB OUT stream %p (avail was %zu)",
+					       (void *)sh_stream, avail);
+		}
+	}
 }
 
 void bap_usb_tx_stream_started(struct shell_stream *sh_stream)
 {
 	const size_t read_cnt = bap_usb_get_read_cnt(sh_stream);
+	int err;
 
 	if (read_cnt == 0U) {
 		LOG_WRN("Invalid frame duration %u for stream %p",
@@ -635,13 +612,21 @@ void bap_usb_tx_stream_started(struct shell_stream *sh_stream)
 	__ASSERT((USB_RING_FRAMES % read_cnt) == 0U,
 		 "Read count %zu does not divide the ring buffer", read_cnt);
 
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN("Failed to lock usb_out_data_mutex to start stream: %d", err);
+		return;
+	}
+
 	/* Start at the producer so that only data received after the stream started is sent,
 	 * rather than at whatever the union with the RX state left in the field.
 	 */
-	sh_stream->tx.usb_read_cursor =
-		usb_align_down((size_t)atomic_get(&usb_out_write_cursor), read_cnt);
+	sh_stream->tx.usb_read_cursor = usb_align_down(usb_out_write_cursor, read_cnt);
 	sh_stream->tx.usb_needs_prefill = true;
-	sh_stream->tx.usb_underrun_cnt = 0U;
+	sh_stream->tx.usb_underrun = false;
+
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
 }
 
 static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uint16_t size,
@@ -649,6 +634,7 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 {
 	size_t frame_cnt;
 	void *buf;
+	int err;
 
 	ARG_UNUSED(dev);
 	ARG_UNUSED(terminal);
@@ -671,19 +657,29 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 		return NULL;
 	}
 
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_out_data_mutex to get receive buffer: %d",
+				  err);
+
+		return NULL;
+	}
+
 	if (frame_cnt != usb_out_slot_frames) {
 		/* Keep the cursors aligned to the new transfer size */
 		usb_out_slot_frames = frame_cnt;
-		usb_out_pending_cursor =
-			usb_align_down((size_t)atomic_get(&usb_out_write_cursor), frame_cnt);
-		atomic_set(&usb_out_write_cursor, (atomic_val_t)usb_out_pending_cursor);
+		usb_out_pending_cursor = usb_align_down(usb_out_write_cursor, frame_cnt);
+		usb_out_write_cursor = usb_out_pending_cursor;
 	}
 
 	/* Hand out the next unused slot in the ring buffer, so that the USB DMA writes directly
 	 * into it. The slot is committed by usb_data_recv_cb().
 	 */
-	buf = &usb_out_ring_buf[usb_ring_index(usb_out_pending_cursor) * USB_CHANNELS];
+	buf = &usb_out_ring_buf[usb_out_pending_cursor * USB_CHANNELS];
 	usb_out_pending_cursor = usb_advance(usb_out_pending_cursor, frame_cnt);
+
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
 
 	return buf;
 }
@@ -693,15 +689,19 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 {
 	static size_t cnt;
 	size_t frame_cnt;
+	int err;
 
 	ARG_UNUSED(dev);
 	ARG_UNUSED(terminal);
 	ARG_UNUSED(user_data);
 
-	if (buf == NULL || usb_out_slot_frames == 0U) {
-		/* No slot was handed out for this buffer, e.g. because the terminal was disabled
-		 * in between, so there is nothing to commit
-		 */
+	if (buf == NULL) {
+		return;
+	}
+
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_out_data_mutex for new USB data: %d", err);
 		return;
 	}
 
@@ -722,14 +722,13 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 				       size);
 	}
 
-	/* Publish the received PCM before the consumers can observe the advanced cursor. Streams
-	 * that have fallen too far behind resynchronize themselves when they next read, so no
-	 * stream state is touched here.
-	 */
-	barrier_dmem_fence_full();
-	atomic_set(&usb_out_write_cursor,
-		   (atomic_val_t)usb_advance((size_t)atomic_get(&usb_out_write_cursor),
-					     usb_out_slot_frames));
+	usb_out_write_cursor = usb_advance(usb_out_write_cursor, usb_out_slot_frames);
+
+	/* Move any stream that is about to be overwritten forwards */
+	bap_foreach_stream(stream_cb, NULL);
+
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
 
 	cnt++;
 	LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "USB Data received (count = %zu)", cnt);
@@ -740,28 +739,30 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 	const size_t read_cnt = bap_usb_get_read_cnt(sh_stream);
 	const size_t retrieve_cnt = read_cnt * sh_stream->lc3_frame_blocks_per_sdu;
 	size_t avail;
+	int err;
 
 	if (read_cnt == 0U || retrieve_cnt == 0U) {
 		return false;
 	}
 
-	/* Resynchronize the stream if the producer has lapped it while it was not reading */
-	avail = usb_out_stream_sync(sh_stream, read_cnt);
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_out_data_mutex to validate SDU "
+				  "availability: %d", err);
+		return false;
+	}
 
-	/* Acquire the PCM that the producer published before it advanced its cursor */
-	barrier_dmem_fence_full();
+	avail = usb_out_stream_avail(sh_stream);
 
-	/* Build up a cushion before sending, at the cost of presentation delay. This is tracked
-	 * per stream, as streams may start at different times and consume at different rates. At
-	 * least two SDUs are always required, so that a stream whose SDUs are longer than the
-	 * target still gets a whole spare SDU.
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
+
+	/* For the first SDU, we want to wait until we can send at least 2 SDUs to help reduce
+	 * issues at the cost of presentation delay. This is tracked per stream, as streams may
+	 * start at different times and consume at different rates.
 	 */
 	if (sh_stream->tx.usb_needs_prefill) {
-		const size_t prefill_cnt = MAX(retrieve_cnt * 2U,
-					       usb_align_down(USB_OUT_TARGET_PREFILL_FRAMES,
-							      read_cnt));
-
-		if (avail < prefill_cnt) {
+		if (avail < (retrieve_cnt * 2U)) {
 			return false;
 		}
 
@@ -770,30 +771,19 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 
 	if (avail < retrieve_cnt) {
 		/* Not enough for a frame yet */
-		if (sh_stream->tx.usb_underrun_cnt == 0U) {
+		if (!sh_stream->tx.usb_underrun) {
 			LOG_WRN_RATELIMIT("Ring buffer (%zu/%u) does not contain enough for an "
 					  "entire SDU %zu for channel allocation 0x%08X",
 					  avail, USB_RING_FRAMES, retrieve_cnt,
 					  (uint32_t)sh_stream->lc3_chan_allocation);
 		}
 
-		if (sh_stream->tx.usb_underrun_cnt < UINT16_MAX) {
-			sh_stream->tx.usb_underrun_cnt++;
-		}
-
-		/* The caller retries rather than sending an empty SDU, so a brief shortfall
-		 * resolves itself as soon as the next USB transfer lands. Retrying for this long
-		 * without succeeding means the stream is persistently starved rather than merely
-		 * late, so rebuild the cushion instead of continuing to ride the edge.
-		 */
-		if (sh_stream->tx.usb_underrun_cnt == USB_OUT_UNDERRUN_PREFILL_THRESHOLD) {
-			sh_stream->tx.usb_needs_prefill = true;
-		}
+		sh_stream->tx.usb_underrun = true;
 
 		return false;
 	}
 
-	sh_stream->tx.usb_underrun_cnt = 0U;
+	sh_stream->tx.usb_underrun = false;
 
 	return true;
 }
@@ -801,32 +791,58 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 const int16_t *bap_usb_claim_frame_block(struct shell_stream *sh_stream)
 {
 	const size_t read_cnt = bap_usb_get_read_cnt(sh_stream);
+	const int16_t *block;
+	int err;
 
 	if (read_cnt == 0U) {
+		return NULL;
+	}
+
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_out_data_mutex to claim frame block: %d",
+				  err);
+
 		return NULL;
 	}
 
 	__ASSERT((sh_stream->tx.usb_read_cursor % read_cnt) == 0U,
 		 "Misaligned cursor %zu for read count %zu", sh_stream->tx.usb_read_cursor,
 		 read_cnt);
-	__ASSERT(sh_stream->tx.usb_read_cursor < USB_CURSOR_MODULUS, "Invalid cursor %zu",
+	__ASSERT(sh_stream->tx.usb_read_cursor < USB_RING_FRAMES, "Invalid cursor %zu",
 		 sh_stream->tx.usb_read_cursor);
 
 	/* The ring buffer size is a multiple of read_cnt, so the frame block never straddles the
 	 * end of the ring buffer and can be handed to liblc3 as-is.
 	 */
-	return &usb_out_ring_buf[usb_ring_index(sh_stream->tx.usb_read_cursor) * USB_CHANNELS];
+	block = &usb_out_ring_buf[sh_stream->tx.usb_read_cursor * USB_CHANNELS];
+
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
+
+	return block;
 }
 
 void bap_usb_release_frame_block(struct shell_stream *sh_stream)
 {
 	const size_t read_cnt = bap_usb_get_read_cnt(sh_stream);
+	int err;
 
 	if (read_cnt == 0U) {
 		return;
 	}
 
+	err = k_mutex_lock(&usb_out_data_mutex, USB_OUT_DATA_MUTEX_TIMEOUT);
+	if (err != 0) {
+		LOG_WRN_RATELIMIT("Failed to lock usb_out_data_mutex to release frame block: %d",
+				  err);
+		return;
+	}
+
 	sh_stream->tx.usb_read_cursor = usb_advance(sh_stream->tx.usb_read_cursor, read_cnt);
+
+	err = k_mutex_unlock(&usb_out_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
 }
 #endif /* CONFIG_BT_AUDIO_TX */
 
@@ -987,12 +1003,10 @@ int bap_usb_init(void)
 		 * to keep up with USB
 		 */
 #if defined(CONFIG_CLOCK_CONTROL_NRF)
-		nrfx_err_t nrfx_err;
+		err = nrfx_clock_divider_set(NRF_CLOCK_DOMAIN_HFCLK, NRF_CLOCK_HFCLK_DIV_1);
 
-		nrfx_err = nrfx_clock_divider_set(NRF_CLOCK_DOMAIN_HFCLK, NRF_CLOCK_HFCLK_DIV_1);
-
-		if (nrfx_err != NRFX_SUCCESS) {
-			LOG_WRN("Failed to set 128 MHz: 0x%08X", nrfx_err);
+		if (err != 0) {
+			LOG_WRN("Failed to set 128 MHz: %d", err);
 		}
 #else
 		nrfx_clock_hfclk_divider_set(NRF_CLOCK_HFCLK_DIV_1);

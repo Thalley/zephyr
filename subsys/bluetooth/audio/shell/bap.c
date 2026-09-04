@@ -45,13 +45,13 @@
 #include <zephyr/shell/shell_string_conv.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/sys/barrier.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/clock.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/time_units.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/util_macro.h>
+#include <zephyr/sys/clock.h>
 #include <zephyr/toolchain.h>
 
 #include "audio.h"
@@ -456,27 +456,18 @@ static size_t encode_frame_block(struct shell_stream *sh_stream, size_t frame_cn
 
 static void do_lc3_encode(struct shell_stream *sh_stream, struct net_buf *out_buf)
 {
-	size_t frame_cnt = 0U;
+	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) && !bap_usb_can_get_full_sdu(sh_stream)) {
+		/* No op - Will just send empty SDU */
+	} else {
+		size_t frame_cnt = 0U;
 
-	for (uint8_t i = 0U; i < sh_stream->lc3_frame_blocks_per_sdu; i++) {
-		frame_cnt += encode_frame_block(sh_stream, frame_cnt, out_buf);
+		for (uint8_t i = 0U; i < sh_stream->lc3_frame_blocks_per_sdu; i++) {
+			frame_cnt += encode_frame_block(sh_stream, frame_cnt, out_buf);
 
-		sh_stream->tx.encoded_cnt++;
+			sh_stream->tx.encoded_cnt++;
+		}
 	}
 }
-
-/* Given when a stream is able to take another SDU, so that the encoder thread only runs when
- * there is work to do rather than polling every millisecond
- */
-static K_SEM_DEFINE(lc3_encoder_sem, 0, 1);
-/* Retry cadence for credits that the binary semaphore coalesced, and safety net for the case
- * where no stream is sending, e.g. right after a stream is started. This matches the interval
- * that the thread used to poll at, so that a credit arriving just before the USB frames that
- * complete its SDU is retried rather than immediately emitting an empty SDU.
- */
-#define LC3_ENCODER_WAKEUP_TIMEOUT K_MSEC(1)
-/* Bounded so that one stream cannot stall every other stream on an exhausted pool */
-#define LC3_TX_BUF_ALLOC_TIMEOUT   K_MSEC(1)
 
 static void lc3_audio_send_data(struct shell_stream *sh_stream)
 {
@@ -511,39 +502,12 @@ static void lc3_audio_send_data(struct shell_stream *sh_stream)
 		return;
 	}
 
-	if (atomic_get(&sh_stream->tx.lc3_enqueue_cnt) == 0) {
+	if (atomic_get(&sh_stream->tx.lc3_enqueue_cnt) == 0U) {
 		/* no op */
 		return;
 	}
 
-	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) && !bap_usb_can_get_full_sdu(sh_stream)) {
-		/* Keep the send credit and retry on the next wakeup instead of spending it on an
-		 * empty SDU. An empty SDU is delivered on time but carries no audio, so the
-		 * receiver has to conceal it; retrying gives the missing USB frames, which arrive
-		 * every 125us to 1ms, a chance to turn up before the SDU is due.
-		 */
-		return;
-	}
-
-	/* Send a single SDU per wakeup. Draining the whole backlog in one pass would consume one
-	 * SDU worth of PCM per credit back to back, spending the cushion that absorbs the drift
-	 * between the USB host clock and the controller clock. Any credit left over is picked up
-	 * on the next wakeup, at the latest after LC3_ENCODER_WAKEUP_TIMEOUT.
-	 */
-
-	/* Do not block the encoder thread indefinitely on an exhausted pool, as that would stall
-	 * every other TX stream behind this one
-	 */
-	buf = net_buf_alloc(&sine_tx_pool, LC3_TX_BUF_ALLOC_TIMEOUT);
-	if (buf == NULL) {
-		sh_stream->tx.lc3_alloc_fail_cnt++;
-
-		bt_shell_warn("[%zu]: Failed to allocate TX buffer for stream %p",
-			      sh_stream->tx.lc3_alloc_fail_cnt, bap_stream);
-
-		return;
-	}
-
+	buf = net_buf_alloc(&sine_tx_pool, K_FOREVER);
 	net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
 
 	do_lc3_encode(sh_stream, buf);
@@ -576,11 +540,6 @@ static void lc3_sent_cb(struct bt_bap_stream *bap_stream)
 	}
 
 	atomic_inc(&sh_stream->tx.lc3_enqueue_cnt);
-
-	/* Wake the encoder thread, which is what turns this into an event driven path rather
-	 * than one that polls every millisecond
-	 */
-	k_sem_give(&lc3_encoder_sem);
 }
 
 static void encode_and_send_cb(struct shell_stream *sh_stream, void *user_data)
@@ -606,13 +565,8 @@ static void lc3_encoder_thread_func(void *arg1, void *arg2, void *arg3)
 	 * If there is no data available it will send empty SDUs
 	 */
 	while (true) {
-		/* Wait for a stream to report that it can take another SDU. The timeout is only a
-		 * safety net for the case where every stream is already primed, so that a stream
-		 * that starts while nothing is being sent is still serviced.
-		 */
-		(void)k_sem_take(&lc3_encoder_sem, LC3_ENCODER_WAKEUP_TIMEOUT);
-
 		bap_foreach_stream(encode_and_send_cb, NULL);
+		k_sleep(K_MSEC(1U));
 	}
 }
 #endif /* CONFIG_LIBLC3 && CONFIG_BT_AUDIO_TX */
@@ -3049,14 +3003,9 @@ static void stream_started_cb(struct bt_bap_stream *bap_stream)
 			}
 
 			if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
-				/* Initialize the USB read cursor before publishing the stream, as
-				 * the encoder thread owns that cursor once tx.active is set
-				 */
-				bap_usb_tx_stream_started(sh_stream);
-				barrier_dmem_fence_full();
-
 				/* Always mark as active when using USB */
 				sh_stream->tx.active = true;
+				bap_usb_tx_stream_started(sh_stream);
 			}
 		}
 #endif /* CONFIG_BT_AUDIO_TX */

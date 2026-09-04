@@ -121,8 +121,6 @@ struct shell_stream {
 			bool active;
 			size_t encoded_cnt;
 			size_t lc3_sdu_cnt;
-			/* Number of SDUs dropped because no TX buffer was available */
-			size_t lc3_alloc_fail_cnt;
 			lc3_encoder_mem_48k_t lc3_encoder_mem;
 			lc3_encoder_t lc3_encoder;
 #if defined(CONFIG_USBD_AUDIO2_CLASS)
@@ -134,12 +132,10 @@ struct shell_stream {
 			size_t usb_read_cursor;
 			/* Set until the ring buffer has been pre-filled once */
 			bool usb_needs_prefill;
-			/* Number of consecutive times the ring buffer has not held an
-			 * entire SDU. Used to only log the first of a burst of underruns,
-			 * and to tell a transient shortfall apart from a stream that is
-			 * persistently starved.
+			/* Set while the ring buffer does not hold an entire SDU, used to
+			 * only log the first of a burst of underruns
 			 */
-			uint16_t usb_underrun_cnt;
+			bool usb_underrun;
 #endif /* CONFIG_USBD_AUDIO2_CLASS */
 #endif /* CONFIG_LIBLC3 */
 		} tx;
