@@ -134,10 +134,12 @@ struct shell_stream {
 			size_t usb_read_cursor;
 			/* Set until the ring buffer has been pre-filled once */
 			bool usb_needs_prefill;
-			/* Set while the ring buffer does not hold an entire SDU, used to
-			 * only log the first of a burst of underruns
+			/* Number of consecutive times the ring buffer has not held an
+			 * entire SDU. Used to only log the first of a burst of underruns,
+			 * and to tell a transient shortfall apart from a stream that is
+			 * persistently starved.
 			 */
-			bool usb_underrun;
+			uint16_t usb_underrun_cnt;
 #endif /* CONFIG_USBD_AUDIO2_CLASS */
 #endif /* CONFIG_LIBLC3 */
 		} tx;

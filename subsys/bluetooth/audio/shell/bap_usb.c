@@ -535,9 +535,20 @@ static size_t usb_out_pending_cursor;
 static size_t usb_out_slot_frames = USB_SAMPLE_CNT;
 
 /* Amount of data a stream aims to keep between itself and the write cursor. Used when a stream
- * starts, and when it has to be resynchronized because it was about to be overwritten.
+ * starts, when it underruns, and when it has to be resynchronized because it was about to be
+ * overwritten.
+ *
+ * This must exceed the amount of PCM that the encoder can consume back to back, which is one SDU
+ * per outstanding send credit. The credits are primed to PRIME_COUNT, so a cushion of exactly two
+ * SDUs can be emptied by a single burst, leaving the next SDU to underrun.
  */
-#define USB_OUT_TARGET_PREFILL_FRAMES (USB_MAX_FRAMES_PER_LC3_FRAME * 2U) /* 20ms */
+#define USB_OUT_TARGET_PREFILL_FRAMES (USB_MAX_FRAMES_PER_LC3_FRAME * 3U) /* 30ms */
+
+/* Number of consecutive underrunning attempts after which a stream rebuilds its cushion. The
+ * encoder thread retries roughly every millisecond, so this allows several USB transfers to land
+ * before giving up on the stream catching up on its own.
+ */
+#define USB_OUT_UNDERRUN_PREFILL_THRESHOLD 5U
 
 /* usb_out_write_cursor is written only by the USB OUT callbacks and usb_out_pending_cursor and
  * usb_out_slot_frames are only ever touched by them, so this path needs no lock either. Each
@@ -630,7 +641,7 @@ void bap_usb_tx_stream_started(struct shell_stream *sh_stream)
 	sh_stream->tx.usb_read_cursor =
 		usb_align_down((size_t)atomic_get(&usb_out_write_cursor), read_cnt);
 	sh_stream->tx.usb_needs_prefill = true;
-	sh_stream->tx.usb_underrun = false;
+	sh_stream->tx.usb_underrun_cnt = 0U;
 }
 
 static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uint16_t size,
@@ -740,12 +751,17 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 	/* Acquire the PCM that the producer published before it advanced its cursor */
 	barrier_dmem_fence_full();
 
-	/* For the first SDU, we want to wait until we can send at least 2 SDUs to help reduce
-	 * issues at the cost of presentation delay. This is tracked per stream, as streams may
-	 * start at different times and consume at different rates.
+	/* Build up a cushion before sending, at the cost of presentation delay. This is tracked
+	 * per stream, as streams may start at different times and consume at different rates. At
+	 * least two SDUs are always required, so that a stream whose SDUs are longer than the
+	 * target still gets a whole spare SDU.
 	 */
 	if (sh_stream->tx.usb_needs_prefill) {
-		if (avail < (retrieve_cnt * 2U)) {
+		const size_t prefill_cnt = MAX(retrieve_cnt * 2U,
+					       usb_align_down(USB_OUT_TARGET_PREFILL_FRAMES,
+							      read_cnt));
+
+		if (avail < prefill_cnt) {
 			return false;
 		}
 
@@ -754,19 +770,30 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 
 	if (avail < retrieve_cnt) {
 		/* Not enough for a frame yet */
-		if (!sh_stream->tx.usb_underrun) {
+		if (sh_stream->tx.usb_underrun_cnt == 0U) {
 			LOG_WRN_RATELIMIT("Ring buffer (%zu/%u) does not contain enough for an "
 					  "entire SDU %zu for channel allocation 0x%08X",
 					  avail, USB_RING_FRAMES, retrieve_cnt,
 					  (uint32_t)sh_stream->lc3_chan_allocation);
 		}
 
-		sh_stream->tx.usb_underrun = true;
+		if (sh_stream->tx.usb_underrun_cnt < UINT16_MAX) {
+			sh_stream->tx.usb_underrun_cnt++;
+		}
+
+		/* The caller retries rather than sending an empty SDU, so a brief shortfall
+		 * resolves itself as soon as the next USB transfer lands. Retrying for this long
+		 * without succeeding means the stream is persistently starved rather than merely
+		 * late, so rebuild the cushion instead of continuing to ride the edge.
+		 */
+		if (sh_stream->tx.usb_underrun_cnt == USB_OUT_UNDERRUN_PREFILL_THRESHOLD) {
+			sh_stream->tx.usb_needs_prefill = true;
+		}
 
 		return false;
 	}
 
-	sh_stream->tx.usb_underrun = false;
+	sh_stream->tx.usb_underrun_cnt = 0U;
 
 	return true;
 }

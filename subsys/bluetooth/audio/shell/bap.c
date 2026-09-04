@@ -456,16 +456,12 @@ static size_t encode_frame_block(struct shell_stream *sh_stream, size_t frame_cn
 
 static void do_lc3_encode(struct shell_stream *sh_stream, struct net_buf *out_buf)
 {
-	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) && !bap_usb_can_get_full_sdu(sh_stream)) {
-		/* No op - Will just send empty SDU */
-	} else {
-		size_t frame_cnt = 0U;
+	size_t frame_cnt = 0U;
 
-		for (uint8_t i = 0U; i < sh_stream->lc3_frame_blocks_per_sdu; i++) {
-			frame_cnt += encode_frame_block(sh_stream, frame_cnt, out_buf);
+	for (uint8_t i = 0U; i < sh_stream->lc3_frame_blocks_per_sdu; i++) {
+		frame_cnt += encode_frame_block(sh_stream, frame_cnt, out_buf);
 
-			sh_stream->tx.encoded_cnt++;
-		}
+		sh_stream->tx.encoded_cnt++;
 	}
 }
 
@@ -473,8 +469,12 @@ static void do_lc3_encode(struct shell_stream *sh_stream, struct net_buf *out_bu
  * there is work to do rather than polling every millisecond
  */
 static K_SEM_DEFINE(lc3_encoder_sem, 0, 1);
-/* Safety net for the case where no stream is sending, e.g. right after a stream is started */
-#define LC3_ENCODER_WAKEUP_TIMEOUT K_MSEC(10)
+/* Retry cadence for credits that the binary semaphore coalesced, and safety net for the case
+ * where no stream is sending, e.g. right after a stream is started. This matches the interval
+ * that the thread used to poll at, so that a credit arriving just before the USB frames that
+ * complete its SDU is retried rather than immediately emitting an empty SDU.
+ */
+#define LC3_ENCODER_WAKEUP_TIMEOUT K_MSEC(1)
 /* Bounded so that one stream cannot stall every other stream on an exhausted pool */
 #define LC3_TX_BUF_ALLOC_TIMEOUT   K_MSEC(1)
 
@@ -511,46 +511,60 @@ static void lc3_audio_send_data(struct shell_stream *sh_stream)
 		return;
 	}
 
-	/* Drain the entire backlog, as the wakeup semaphore is binary and may have coalesced
-	 * several sent callbacks into a single wakeup. The backlog is bounded by PRIME_COUNT.
-	 */
-	while (atomic_get(&sh_stream->tx.lc3_enqueue_cnt) > 0) {
-		/* Do not block the encoder thread indefinitely on an exhausted pool, as that
-		 * would stall every other TX stream behind this one
-		 */
-		buf = net_buf_alloc(&sine_tx_pool, LC3_TX_BUF_ALLOC_TIMEOUT);
-		if (buf == NULL) {
-			sh_stream->tx.lc3_alloc_fail_cnt++;
-
-			bt_shell_warn("[%zu]: Failed to allocate TX buffer for stream %p",
-				      sh_stream->tx.lc3_alloc_fail_cnt, bap_stream);
-
-			return;
-		}
-
-		net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
-
-		do_lc3_encode(sh_stream, buf);
-
-		err = bt_bap_stream_send(bap_stream, buf, sh_stream->tx.seq_num);
-		if (err < 0) {
-			bt_shell_error("Failed to send LC3 audio data (%d)", err);
-			net_buf_unref(buf);
-
-			return;
-		}
-
-		if (bap_stats_interval > 0U &&
-		    (sh_stream->tx.lc3_sdu_cnt % bap_stats_interval) == 0U) {
-			bt_shell_info("[%zu]: stream %p : TX LC3: %zu (seq_num %u)",
-				      sh_stream->tx.lc3_sdu_cnt, bap_stream, tx_sdu_len,
-				      sh_stream->tx.seq_num);
-		}
-
-		sh_stream->tx.lc3_sdu_cnt++;
-		sh_stream->tx.seq_num++;
-		atomic_dec(&sh_stream->tx.lc3_enqueue_cnt);
+	if (atomic_get(&sh_stream->tx.lc3_enqueue_cnt) == 0) {
+		/* no op */
+		return;
 	}
+
+	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) && !bap_usb_can_get_full_sdu(sh_stream)) {
+		/* Keep the send credit and retry on the next wakeup instead of spending it on an
+		 * empty SDU. An empty SDU is delivered on time but carries no audio, so the
+		 * receiver has to conceal it; retrying gives the missing USB frames, which arrive
+		 * every 125us to 1ms, a chance to turn up before the SDU is due.
+		 */
+		return;
+	}
+
+	/* Send a single SDU per wakeup. Draining the whole backlog in one pass would consume one
+	 * SDU worth of PCM per credit back to back, spending the cushion that absorbs the drift
+	 * between the USB host clock and the controller clock. Any credit left over is picked up
+	 * on the next wakeup, at the latest after LC3_ENCODER_WAKEUP_TIMEOUT.
+	 */
+
+	/* Do not block the encoder thread indefinitely on an exhausted pool, as that would stall
+	 * every other TX stream behind this one
+	 */
+	buf = net_buf_alloc(&sine_tx_pool, LC3_TX_BUF_ALLOC_TIMEOUT);
+	if (buf == NULL) {
+		sh_stream->tx.lc3_alloc_fail_cnt++;
+
+		bt_shell_warn("[%zu]: Failed to allocate TX buffer for stream %p",
+			      sh_stream->tx.lc3_alloc_fail_cnt, bap_stream);
+
+		return;
+	}
+
+	net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
+
+	do_lc3_encode(sh_stream, buf);
+
+	err = bt_bap_stream_send(bap_stream, buf, sh_stream->tx.seq_num);
+	if (err < 0) {
+		bt_shell_error("Failed to send LC3 audio data (%d)", err);
+		net_buf_unref(buf);
+
+		return;
+	}
+
+	if (bap_stats_interval > 0U && (sh_stream->tx.lc3_sdu_cnt % bap_stats_interval) == 0U) {
+		bt_shell_info("[%zu]: stream %p : TX LC3: %zu (seq_num %u)",
+			      sh_stream->tx.lc3_sdu_cnt, bap_stream, tx_sdu_len,
+			      sh_stream->tx.seq_num);
+	}
+
+	sh_stream->tx.lc3_sdu_cnt++;
+	sh_stream->tx.seq_num++;
+	atomic_dec(&sh_stream->tx.lc3_enqueue_cnt);
 }
 
 static void lc3_sent_cb(struct bt_bap_stream *bap_stream)
