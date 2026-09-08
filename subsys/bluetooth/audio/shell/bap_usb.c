@@ -75,8 +75,8 @@ LOG_MODULE_REGISTER(bap_usb, CONFIG_BT_BAP_STREAM_LOG_LEVEL);
  * By sizing the ring buffers to a multiple of the least common multiple of all of those
  * (LCM(6, 48, 120, 240, 360, 480) == 1440), and by keeping every cursor a multiple of its own
  * step size, neither an LC3 frame nor a USB transfer can ever straddle the end of a ring buffer.
- * That removes the need for any wrap handling, and lets both liblc3 and the USB DMA operate
- * directly on the ring buffers.
+ * That removes the need for any wrap handling, lets liblc3 operate directly on the ring buffers,
+ * and gives USB contiguous copy regions into and out of DMA staging slots.
  *
  * Note that the 44.1kHz LC3 configurations have non-integer frame durations (8.16ms and 10.88ms)
  * which would break this. They cannot reach this code as stream_started_cb() rejects any
@@ -283,6 +283,18 @@ static int16_t *usb_in_dma_slot_acquire(void)
 	return NULL;
 }
 
+static bool usb_in_dma_slot_release(void *buf)
+{
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_dma_slot_busy); i++) {
+		if (buf == usb_in_dma_slots[i]) {
+			usb_in_dma_slot_busy[i] = false;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /* USB consumer callback, called once per (micro)frame, consumes usb_in_slot_frames frames from
  * the ring buffer
  */
@@ -390,10 +402,17 @@ static void usb_data_request(const struct device *dev)
 
 	err = usbd_uac2_send(dev, IN_TERMINAL_ID, pcm_buf, slot_size);
 	if (err != 0) {
+		const int send_err = err;
 		static size_t cnt;
 
+		err = k_mutex_lock(&usb_in_data_mutex, K_FOREVER);
+		__ASSERT(err == 0, "Failed to lock usb_in_data_mutex to release buffer: %d", err);
+		(void)usb_in_dma_slot_release(pcm_buf);
+		err = k_mutex_unlock(&usb_in_data_mutex);
+		__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
+
 		cnt++;
-		LOG_ERR_RATELIMIT_RATE(USB_LOG_RATE, "Failed to send USB audio: %d (%zu)", err,
+		LOG_ERR_RATELIMIT_RATE(USB_LOG_RATE, "Failed to send USB audio: %d (%zu)", send_err,
 				       cnt);
 	}
 }
@@ -410,12 +429,7 @@ static void usb_buf_release_cb(const struct device *dev, uint8_t terminal, void 
 	err = k_mutex_lock(&usb_in_data_mutex, K_FOREVER);
 	__ASSERT(err == 0, "Failed to lock usb_in_data_mutex to release buffer: %d", err);
 
-	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_dma_slot_busy); i++) {
-		if (buf == usb_in_dma_slots[i]) {
-			usb_in_dma_slot_busy[i] = false;
-			break;
-		}
-	}
+	(void)usb_in_dma_slot_release(buf);
 
 	err = k_mutex_unlock(&usb_in_data_mutex);
 	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
@@ -946,7 +960,9 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 		 * about to be overwritten is resynchronized by stream_cb() anyway. Without this a
 		 * stream with large SDUs would stay in prefill and send empty SDUs forever.
 		 */
-		const size_t prefill_cnt = MIN(retrieve_cnt * 2U, USB_OUT_MAX_PREFILL_FRAMES);
+		const size_t prefill_cnt = (retrieve_cnt > (USB_OUT_MAX_PREFILL_FRAMES / 2U)) ?
+						       retrieve_cnt :
+						       (retrieve_cnt * 2U);
 
 		if (avail < prefill_cnt) {
 			return false;
