@@ -55,6 +55,7 @@ LOG_MODULE_REGISTER(bap_usb, CONFIG_BT_BAP_STREAM_LOG_LEVEL);
 #define USB_BYTES_PER_SAMPLE   sizeof(int16_t)
 #define USB_MONO_FRAME_SIZE    (USB_SAMPLE_CNT * USB_BYTES_PER_SAMPLE)
 #define USB_STEREO_FRAME_SIZE  (USB_MONO_FRAME_SIZE * USB_CHANNELS)
+#define USB_UAC2_SLOT_CNT      4U
 /* Number of microframes in a frame. At high speed a transfer covers a microframe rather than a
  * frame, so an isochronous endpoint transfers an eighth of the samples per transfer.
  */
@@ -201,6 +202,9 @@ static void usb_sof_cb(const struct device *dev, void *user_data)
  */
 USB_STATIC_BUF_DEFINE(usb_in_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_in_ring_buf = (int16_t *)usb_in_ring_buf_mem;
+static uint8_t __aligned(USB_BUF_ALIGN)
+	usb_in_dma_slots[USB_UAC2_SLOT_CNT][USB_BUF_ROUND_UP(USB_STEREO_FRAME_SIZE)];
+static bool usb_in_dma_slot_busy[USB_UAC2_SLOT_CNT];
 /* Sent when there is nothing to send. Kept separate from the ring buffer so that an underrun does
  * not discard data that a channel has already decoded.
  */
@@ -266,6 +270,18 @@ static size_t usb_in_chan_fill(size_t write_cursor)
 	return usb_frames_between(usb_in_read_cursor, write_cursor);
 }
 
+static int16_t *usb_in_dma_slot_acquire(void)
+{
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_dma_slot_busy); i++) {
+		if (!usb_in_dma_slot_busy[i]) {
+			usb_in_dma_slot_busy[i] = true;
+			return (int16_t *)usb_in_dma_slots[i];
+		}
+	}
+
+	return NULL;
+}
+
 /* USB consumer callback, called once per (micro)frame, consumes usb_in_slot_frames frames from
  * the ring buffer
  */
@@ -315,6 +331,7 @@ static void usb_data_request(const struct device *dev)
 
 	if (have_data) {
 		static size_t cnt;
+		int16_t *dma_buf;
 
 		pcm_buf = &usb_in_ring_buf[usb_in_read_cursor * USB_CHANNELS];
 
@@ -336,6 +353,17 @@ static void usb_data_request(const struct device *dev)
 		if (!starving) {
 			usb_in_underrun_cnt = 0U;
 		}
+
+		dma_buf = usb_in_dma_slot_acquire();
+		if (dma_buf == NULL) {
+			LOG_WRN_RATELIMIT("No available USB IN DMA slot");
+			err = k_mutex_unlock(&usb_in_data_mutex);
+			__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
+			return;
+		}
+
+		(void)memcpy(dma_buf, pcm_buf, slot_size);
+		pcm_buf = dma_buf;
 
 		cnt++;
 		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB audio", cnt);
@@ -372,12 +400,24 @@ static void usb_data_request(const struct device *dev)
 static void usb_buf_release_cb(const struct device *dev, uint8_t terminal, void *buf,
 			       void *user_data)
 {
+	int err;
+
 	ARG_UNUSED(dev);
 	ARG_UNUSED(terminal);
-	ARG_UNUSED(buf);
 	ARG_UNUSED(user_data);
 
-	/* The buffer is part of usb_in_ring_buf and is not owned by the USB stack */
+	err = k_mutex_lock(&usb_in_data_mutex, K_FOREVER);
+	__ASSERT(err == 0, "Failed to lock usb_in_data_mutex to release buffer: %d", err);
+
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_dma_slot_busy); i++) {
+		if (buf == usb_in_dma_slots[i]) {
+			usb_in_dma_slot_busy[i] = false;
+			break;
+		}
+	}
+
+	err = k_mutex_unlock(&usb_in_data_mutex);
+	__ASSERT(err == 0, "Failed to unlock usb_in_data_mutex: %d", err);
 }
 
 static size_t *usb_in_write_cursor(enum bt_audio_location chan_alloc)
@@ -557,6 +597,14 @@ void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_c
  */
 USB_STATIC_BUF_DEFINE(usb_out_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_out_ring_buf = (int16_t *)usb_out_ring_buf_mem;
+static uint8_t __aligned(USB_BUF_ALIGN)
+	usb_out_dma_slots[USB_UAC2_SLOT_CNT][USB_BUF_ROUND_UP(USB_STEREO_FRAME_SIZE)];
+struct usb_out_dma_slot {
+	size_t cursor;
+	size_t frame_cnt;
+	bool pending;
+};
+static struct usb_out_dma_slot usb_out_dma_slot_state[USB_UAC2_SLOT_CNT];
 /* Points to the oldest/uninitialized data */
 static size_t usb_out_write_cursor;
 /* Position that has been handed to the USB stack but not yet received. The UAC2 class may have
@@ -599,6 +647,9 @@ static void usb_out_terminal_disabled(void)
 	 */
 	usb_out_pending_cursor = usb_out_write_cursor;
 	usb_out_slot_frames = USB_SAMPLE_CNT;
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_out_dma_slot_state); i++) {
+		usb_out_dma_slot_state[i].pending = false;
+	}
 
 	err = k_mutex_unlock(&usb_out_data_mutex);
 	__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
@@ -620,6 +671,28 @@ static size_t usb_retreat(size_t cursor, size_t frames)
 static size_t usb_out_stream_avail(const struct shell_stream *sh_stream)
 {
 	return usb_frames_between(sh_stream->tx.usb_read_cursor, usb_out_write_cursor);
+}
+
+static int usb_out_dma_slot_index_by_buf(void *buf)
+{
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_out_dma_slot_state); i++) {
+		if (buf == usb_out_dma_slots[i]) {
+			return (int)i;
+		}
+	}
+
+	return -1;
+}
+
+static int usb_out_dma_slot_index_free(void)
+{
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_out_dma_slot_state); i++) {
+		if (!usb_out_dma_slot_state[i].pending) {
+			return (int)i;
+		}
+	}
+
+	return -1;
 }
 
 static void stream_cb(struct shell_stream *sh_stream, void *user_data)
@@ -692,6 +765,7 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 {
 	size_t frame_cnt;
 	void *buf;
+	int slot_idx;
 	int err;
 
 	ARG_UNUSED(dev);
@@ -730,10 +804,22 @@ static void *usb_get_recv_buf_cb(const struct device *dev, uint8_t terminal, uin
 		usb_out_write_cursor = usb_out_pending_cursor;
 	}
 
-	/* Hand out the next unused slot in the ring buffer, so that the USB DMA writes directly
-	 * into it. The slot is committed by usb_data_recv_cb().
+	slot_idx = usb_out_dma_slot_index_free();
+
+	if (slot_idx < 0) {
+		LOG_WRN_RATELIMIT("No available USB OUT DMA slot");
+		err = k_mutex_unlock(&usb_out_data_mutex);
+		__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
+		return NULL;
+	}
+
+	/* Hand out the next unused DMA-aligned slot. The slot is committed by
+	 * usb_data_recv_cb().
 	 */
-	buf = &usb_out_ring_buf[usb_out_pending_cursor * USB_CHANNELS];
+	usb_out_dma_slot_state[slot_idx].cursor = usb_out_pending_cursor;
+	usb_out_dma_slot_state[slot_idx].frame_cnt = frame_cnt;
+	usb_out_dma_slot_state[slot_idx].pending = true;
+	buf = usb_out_dma_slots[slot_idx];
 	usb_out_pending_cursor = usb_advance(usb_out_pending_cursor, frame_cnt);
 
 	err = k_mutex_unlock(&usb_out_data_mutex);
@@ -746,7 +832,11 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 			     void *user_data)
 {
 	static size_t cnt;
+	struct usb_out_dma_slot *slot;
+	const int16_t *src;
+	int16_t *dst;
 	size_t frame_cnt;
+	int slot_idx;
 	int err;
 
 	ARG_UNUSED(dev);
@@ -768,24 +858,46 @@ static void usb_data_recv_cb(const struct device *dev, uint8_t terminal, void *b
 		return;
 	}
 
-	/* The data has been written into the ring buffer by DMA already, so all that is left is
-	 * to make it available to the consumers. The host may send a short packet, in which case
-	 * the remainder of the slot is zero-filled; the entire slot is always committed so that
-	 * the cursors keep the alignment that the ring buffer sizing relies on.
+	/* The data has been written into the DMA-aligned slot already, so all that is left is to
+	 * make it available to the consumers. The host may send a short packet, in which case the
+	 * remainder of the slot is zero-filled; the entire slot is always committed so that the
+	 * cursors keep the alignment that the ring buffer sizing relies on.
 	 */
-	frame_cnt = MIN(size / (USB_CHANNELS * USB_BYTES_PER_SAMPLE), usb_out_slot_frames);
-	if (frame_cnt < usb_out_slot_frames) {
+	slot_idx = usb_out_dma_slot_index_by_buf(buf);
+	if (slot_idx < 0) {
+		LOG_WRN_RATELIMIT("Unknown USB OUT DMA slot %p", buf);
+		err = k_mutex_unlock(&usb_out_data_mutex);
+		__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
+		return;
+	}
+
+	slot = &usb_out_dma_slot_state[slot_idx];
+	if (!slot->pending) {
+		LOG_WRN_RATELIMIT("USB OUT DMA slot %d not pending", slot_idx);
+		err = k_mutex_unlock(&usb_out_data_mutex);
+		__ASSERT(err == 0, "Failed to unlock usb_out_data_mutex: %d", err);
+		return;
+	}
+
+	frame_cnt = MIN(size / (USB_CHANNELS * USB_BYTES_PER_SAMPLE), slot->frame_cnt);
+	if (frame_cnt < slot->frame_cnt) {
 		int16_t *pcm = (int16_t *)buf;
 
 		(void)memset(&pcm[frame_cnt * USB_CHANNELS], 0,
-			     (usb_out_slot_frames - frame_cnt) * USB_CHANNELS *
+			     (slot->frame_cnt - frame_cnt) * USB_CHANNELS *
 				     USB_BYTES_PER_SAMPLE);
 
 		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "Received short USB packet of %u octets",
 				       size);
 	}
 
-	usb_out_write_cursor = usb_advance(usb_out_write_cursor, usb_out_slot_frames);
+	__ASSERT(slot->cursor == usb_out_write_cursor, "Unexpected USB OUT cursor");
+
+	src = (const int16_t *)buf;
+	dst = &usb_out_ring_buf[slot->cursor * USB_CHANNELS];
+	(void)memcpy(dst, src, slot->frame_cnt * USB_CHANNELS * USB_BYTES_PER_SAMPLE);
+	usb_out_write_cursor = usb_advance(usb_out_write_cursor, slot->frame_cnt);
+	slot->pending = false;
 
 	/* Move any stream that is about to be overwritten forwards */
 	bap_foreach_stream(stream_cb, NULL);
