@@ -198,7 +198,8 @@ static void usb_sof_cb(const struct device *dev, void *user_data)
  *
  * It has up to 2 producers (a single stream for each of the left and right channels, elected by
  * stream_started_cb()) that each have their own write cursor, and a single consumer (the USB SOF
- * handler). The buffer is written directly by liblc3 and read directly by the USB DMA.
+ * handler). The buffer is written directly by liblc3, then USB SOF copies each transfer to
+ * usb_in_dma_slots for USB DMA.
  */
 USB_STATIC_BUF_DEFINE(usb_in_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_in_ring_buf = (int16_t *)usb_in_ring_buf_mem;
