@@ -203,8 +203,16 @@ static void usb_sof_cb(const struct device *dev, void *user_data)
  */
 USB_STATIC_BUF_DEFINE(usb_in_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_in_ring_buf = (int16_t *)usb_in_ring_buf_mem;
-static uint8_t __aligned(USB_BUF_ALIGN)
-	usb_in_dma_slots[USB_UAC2_SLOT_CNT][USB_BUF_ROUND_UP(USB_STEREO_FRAME_SIZE)];
+USB_STATIC_BUF_DEFINE(usb_in_dma_slot0, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_in_dma_slot1, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_in_dma_slot2, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_in_dma_slot3, USB_STEREO_FRAME_SIZE);
+static uint8_t *const usb_in_dma_slots[USB_UAC2_SLOT_CNT] = {
+	usb_in_dma_slot0,
+	usb_in_dma_slot1,
+	usb_in_dma_slot2,
+	usb_in_dma_slot3,
+};
 static bool usb_in_dma_slot_busy[USB_UAC2_SLOT_CNT];
 /* Sent when there is nothing to send. Kept separate from the ring buffer so that an underrun does
  * not discard data that a channel has already decoded.
@@ -614,8 +622,16 @@ void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_c
  */
 USB_STATIC_BUF_DEFINE(usb_out_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_out_ring_buf = (int16_t *)usb_out_ring_buf_mem;
-static uint8_t __aligned(USB_BUF_ALIGN)
-	usb_out_dma_slots[USB_UAC2_SLOT_CNT][USB_BUF_ROUND_UP(USB_STEREO_FRAME_SIZE)];
+USB_STATIC_BUF_DEFINE(usb_out_dma_slot0, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_out_dma_slot1, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_out_dma_slot2, USB_STEREO_FRAME_SIZE);
+USB_STATIC_BUF_DEFINE(usb_out_dma_slot3, USB_STEREO_FRAME_SIZE);
+static uint8_t *const usb_out_dma_slots[USB_UAC2_SLOT_CNT] = {
+	usb_out_dma_slot0,
+	usb_out_dma_slot1,
+	usb_out_dma_slot2,
+	usb_out_dma_slot3,
+};
 struct usb_out_dma_slot {
 	size_t cursor;
 	size_t frame_cnt;
@@ -961,7 +977,7 @@ bool bap_usb_can_get_full_sdu(struct shell_stream *sh_stream)
 		 * stream with large SDUs would stay in prefill and send empty SDUs forever.
 		 */
 		const size_t prefill_cnt = (retrieve_cnt > (USB_OUT_MAX_PREFILL_FRAMES / 2U)) ?
-						       retrieve_cnt :
+						       USB_OUT_MAX_PREFILL_FRAMES :
 						       (retrieve_cnt * 2U);
 
 		if (avail < prefill_cnt) {
