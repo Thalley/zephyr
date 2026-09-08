@@ -592,9 +592,11 @@ void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_c
 #if defined(CONFIG_BT_AUDIO_TX)
 /* Interleaved stereo ring buffer holding audio received from the USB host.
  *
- * It has a single producer (the USB OUT endpoint, which writes into it by DMA) and 0 or more
- * consumers, one per TX stream, that each have their own read cursor and that may consume at
- * different rates. The buffer is read directly by liblc3.
+ * It has a single producer, where the USB OUT endpoint writes by DMA into
+ * usb_out_dma_slots and usb_data_recv_cb() copies those samples into this ring,
+ * and 0 or more consumers, one per TX stream, that each have their own read
+ * cursor and that may consume at different rates. The buffer is read directly
+ * by liblc3.
  */
 USB_STATIC_BUF_DEFINE(usb_out_ring_buf_mem, USB_RING_SAMPLES *USB_BYTES_PER_SAMPLE);
 static int16_t *const usb_out_ring_buf = (int16_t *)usb_out_ring_buf_mem;
