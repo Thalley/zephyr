@@ -68,13 +68,14 @@ LOG_MODULE_REGISTER(bap_usb, CONFIG_BT_BAP_STREAM_LOG_LEVEL);
  * init_lc3_encoder() and init_lc3_decoder()), so a stream always produces and consumes PCM at
  * USB_SAMPLE_RATE regardless of its configured LC3 sample rate. Streams thus only differ in how
  * many USB frames a single LC3 frame covers: 120, 240, 360 or 480 for 2.5ms, 5ms, 7.5ms and 10ms
- * frame durations respectively. USB itself transfers USB_SAMPLE_CNT (48) frames every SOF.
+ * frame durations respectively. USB transfers USB_SAMPLE_CNT (48) frames per SOF at full speed, or
+ * USB_HS_SAMPLE_CNT (6) frames per microframe at high speed.
  *
  * By sizing the ring buffers to a multiple of the least common multiple of all of those
- * (LCM(48, 120, 240, 360, 480) == 1440), and by keeping every cursor a multiple of its own step
- * size, neither an LC3 frame nor a USB transfer can ever straddle the end of a ring buffer. That
- * removes the need for any wrap handling, and lets both liblc3 and the USB DMA operate directly
- * on the ring buffers.
+ * (LCM(6, 48, 120, 240, 360, 480) == 1440), and by keeping every cursor a multiple of its own
+ * step size, neither an LC3 frame nor a USB transfer can ever straddle the end of a ring buffer.
+ * That removes the need for any wrap handling, and lets both liblc3 and the USB DMA operate
+ * directly on the ring buffers.
  *
  * Note that the 44.1kHz LC3 configurations have non-integer frame durations (8.16ms and 10.88ms)
  * which would break this. They cannot reach this code as stream_started_cb() rejects any
@@ -164,10 +165,10 @@ static void usb_terminal_update_cb(const struct device *dev, uint8_t terminal, b
 #endif /* !CONFIG_BT_AUDIO_RX */
 
 	if (terminal == IN_TERMINAL_ID) {
-		in_terminal_enabled = enabled;
 #if defined(CONFIG_BT_AUDIO_RX)
 		usb_in_terminal_update(microframes);
 #endif /* CONFIG_BT_AUDIO_RX */
+		in_terminal_enabled = enabled;
 	} else if (terminal == OUT_TERMINAL_ID) {
 		out_terminal_enabled = enabled;
 #if defined(CONFIG_BT_AUDIO_TX)
@@ -229,7 +230,7 @@ static size_t usb_in_underrun_cnt;
  * blocking the channels that do produce data. A stream that stops without being deactivated would
  * otherwise mute the other channel indefinitely.
  */
-#define USB_IN_MAX_UNDERRUNS 100U /* 100 (micro)frames */
+#define USB_IN_MAX_UNDERRUNS 100U /* 100 USB frames at full speed */
 
 /* usb_in_data_mutex guards usb_in_ring_buf and all of the cursors and flags above */
 static K_MUTEX_DEFINE(usb_in_data_mutex);
@@ -244,11 +245,8 @@ static void usb_in_terminal_update(bool microframes)
 		(USBD_SUPPORTS_HIGH_SPEED && microframes) ? USB_HS_SAMPLE_CNT : USB_SAMPLE_CNT;
 	int err;
 
-	err = k_mutex_lock(&usb_in_data_mutex, USB_IN_DATA_MUTEX_TIMEOUT);
-	if (err != 0) {
-		LOG_WRN("Failed to lock usb_in_data_mutex to update terminal: %d", err);
-		return;
-	}
+	err = k_mutex_lock(&usb_in_data_mutex, K_FOREVER);
+	__ASSERT(err == 0, "Failed to lock usb_in_data_mutex to update terminal: %d", err);
 
 	if (slot_frames != usb_in_slot_frames) {
 		usb_in_slot_frames = slot_frames;
@@ -275,6 +273,7 @@ static void usb_data_request(const struct device *dev)
 {
 	size_t slot_frames;
 	size_t slot_size;
+	size_t max_underruns;
 	int16_t *pcm_buf;
 	bool left_active;
 	bool right_active;
@@ -291,6 +290,7 @@ static void usb_data_request(const struct device *dev)
 
 	slot_frames = usb_in_slot_frames;
 	slot_size = slot_frames * USB_CHANNELS * USB_BYTES_PER_SAMPLE;
+	max_underruns = USB_IN_MAX_UNDERRUNS * (USB_SAMPLE_CNT / slot_frames);
 	left_active = usb_in_left_active;
 	right_active = usb_in_right_active;
 
@@ -298,7 +298,7 @@ static void usb_data_request(const struct device *dev)
 	 * does produce data is not held back indefinitely. This bounds the effect of a producer
 	 * that stops without deactivating its channel.
 	 */
-	give_up = usb_in_underrun_cnt >= USB_IN_MAX_UNDERRUNS;
+	give_up = usb_in_underrun_cnt >= max_underruns;
 
 	if (left_active && usb_in_chan_fill(usb_in_left_write_cursor) < slot_frames) {
 		left_active = !give_up;
@@ -348,7 +348,7 @@ static void usb_data_request(const struct device *dev)
 		pcm_buf = usb_in_silence;
 		(void)memset(pcm_buf, 0, slot_size);
 
-		if (usb_in_underrun_cnt < USB_IN_MAX_UNDERRUNS) {
+		if (usb_in_underrun_cnt < max_underruns) {
 			usb_in_underrun_cnt++;
 		}
 
