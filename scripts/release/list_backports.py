@@ -57,8 +57,10 @@ def strip_non_text_markdown_regions(body):
     in_fenced_code_block = False
     fenced_code_char = ""
     fenced_code_length = 0
+    in_indented_code_block = False
     in_html_comment = False
     inline_code_delimiter_length = 0
+    previous_line_blank = True
 
     def remove_html_comments(line, in_comment):
         out = []
@@ -94,7 +96,16 @@ def strip_non_text_markdown_regions(body):
                 closing = line.find("`" * delimiter_length, i)
                 if closing == -1:
                     break
-                i = closing + delimiter_length
+
+                before_is_backtick = closing > 0 and line[closing - 1] == "`"
+                after_index = closing + delimiter_length
+                after_is_backtick = after_index < line_len and line[after_index] == "`"
+
+                if before_is_backtick or after_is_backtick:
+                    i = closing + 1
+                    continue
+
+                i = after_index
                 delimiter_length = 0
                 continue
 
@@ -113,14 +124,25 @@ def strip_non_text_markdown_regions(body):
         return "".join(out), delimiter_length
 
     for line in body.splitlines():
-        line, in_html_comment = remove_html_comments(line, in_html_comment)
-
         if in_fenced_code_block:
             if re.fullmatch(
                 rf" {{0,3}}{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
                 line,
             ):
                 in_fenced_code_block = False
+                in_indented_code_block = False
+                previous_line_blank = True
+            continue
+
+        if in_indented_code_block:
+            if line.startswith("    ") or line.startswith("\t") or line.strip() == "":
+                previous_line_blank = line.strip() == ""
+                continue
+            in_indented_code_block = False
+
+        if (line.startswith("    ") or line.startswith("\t")) and previous_line_blank:
+            in_indented_code_block = True
+            previous_line_blank = False
             continue
 
         if inline_code_delimiter_length > 0:
@@ -128,22 +150,28 @@ def strip_non_text_markdown_regions(body):
                 line,
                 inline_code_delimiter_length,
             )
+            line, in_html_comment = remove_html_comments(line, in_html_comment)
             sanitized_lines.append(line)
+            previous_line_blank = line.strip() == ""
             continue
 
-        match = re.match(r" {0,3}((?:`{3,}|~{3,}))(?:[ \t].*)?$", line)
+        match = re.match(r" {0,3}((?:`{3,}|~{3,})).*$", line)
         if match:
             fence = match.group(1)
             in_fenced_code_block = True
             fenced_code_char = fence[0]
             fenced_code_length = len(fence)
+            previous_line_blank = False
             continue
 
         line, inline_code_delimiter_length = remove_inline_code_spans(
             line,
             inline_code_delimiter_length,
         )
+        line, in_html_comment = remove_html_comments(line, in_html_comment)
+
         sanitized_lines.append(line)
+        previous_line_blank = line.strip() == ""
 
     return "\n".join(sanitized_lines)
 
