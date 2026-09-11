@@ -57,13 +57,47 @@ def strip_non_text_markdown_regions(body):
     in_fenced_code_block = False
     fenced_code_char = ""
     fenced_code_length = 0
+    in_html_comment = False
+    inline_code_delimiter_length = 0
 
-    def remove_inline_code_spans(line):
+    def remove_html_comments(line, in_comment):
+        out = []
+        i = 0
+
+        while i < len(line):
+            if in_comment:
+                closing = line.find("-->", i)
+                if closing == -1:
+                    return "".join(out), True
+                i = closing + 3
+                in_comment = False
+                continue
+
+            opening = line.find("<!--", i)
+            if opening == -1:
+                out.append(line[i:])
+                break
+
+            out.append(line[i:opening])
+            i = opening + 4
+            in_comment = True
+
+        return "".join(out), in_comment
+
+    def remove_inline_code_spans(line, delimiter_length):
         out = []
         i = 0
         line_len = len(line)
 
         while i < line_len:
+            if delimiter_length > 0:
+                closing = line.find("`" * delimiter_length, i)
+                if closing == -1:
+                    break
+                i = closing + delimiter_length
+                delimiter_length = 0
+                continue
+
             if line[i] != "`":
                 out.append(line[i])
                 i += 1
@@ -74,30 +108,30 @@ def strip_non_text_markdown_regions(body):
                 i += 1
             backtick_run_len = i - run_start
 
-            closing = line.find("`" * backtick_run_len, i)
-            if closing == -1:
-                out.append(line[run_start:i])
-                continue
+            delimiter_length = backtick_run_len
 
-            i = closing + backtick_run_len
-
-        return "".join(out)
+        return "".join(out), delimiter_length
 
     for line in body.splitlines():
-        stripped = line.lstrip(" ")
+        line, in_html_comment = remove_html_comments(line, in_html_comment)
 
         if in_fenced_code_block:
             if re.fullmatch(
-                rf"{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
-                stripped,
+                rf" {{0,3}}{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
+                line,
             ):
                 in_fenced_code_block = False
             continue
 
-        if line.startswith("\t") or line.startswith("    "):
+        if inline_code_delimiter_length > 0:
+            line, inline_code_delimiter_length = remove_inline_code_spans(
+                line,
+                inline_code_delimiter_length,
+            )
+            sanitized_lines.append(line)
             continue
 
-        match = re.match(r" {0,3}([`~]{3,})", line)
+        match = re.match(r" {0,3}((?:`{3,}|~{3,}))(?:[ \t].*)?$", line)
         if match:
             fence = match.group(1)
             in_fenced_code_block = True
@@ -105,10 +139,13 @@ def strip_non_text_markdown_regions(body):
             fenced_code_length = len(fence)
             continue
 
-        sanitized_lines.append(remove_inline_code_spans(line))
+        line, inline_code_delimiter_length = remove_inline_code_spans(
+            line,
+            inline_code_delimiter_length,
+        )
+        sanitized_lines.append(line)
 
-    sanitized = "\n".join(sanitized_lines)
-    return re.sub(r"<!--.*?-->", "", sanitized, flags=re.DOTALL)
+    return "\n".join(sanitized_lines)
 
 
 # https://gist.github.com/monkut/e60eea811ef085a6540f
