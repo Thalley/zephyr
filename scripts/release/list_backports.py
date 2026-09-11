@@ -53,10 +53,59 @@ CLOSING_KEYWORDS = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[:]?\s*"
 
 def strip_non_text_markdown_regions(body):
     """Strip markdown regions where GitHub does not resolve closing keywords."""
-    sanitized = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
-    sanitized = re.sub(r"`[^`]*`", "", sanitized)
-    sanitized = re.sub(r"<!--.*?-->", "", sanitized, flags=re.DOTALL)
-    return sanitized
+    sanitized_lines = []
+    in_fenced_code_block = False
+    fenced_code_char = ""
+    fenced_code_length = 0
+
+    def remove_inline_code_spans(line):
+        out = []
+        i = 0
+        line_len = len(line)
+
+        while i < line_len:
+            if line[i] != "`":
+                out.append(line[i])
+                i += 1
+                continue
+
+            run_start = i
+            while i < line_len and line[i] == "`":
+                i += 1
+            backtick_run_len = i - run_start
+
+            closing = line.find("`" * backtick_run_len, i)
+            if closing == -1:
+                out.append(line[run_start:i])
+                continue
+
+            i = closing + backtick_run_len
+
+        return "".join(out)
+
+    for line in body.splitlines():
+        stripped = line.lstrip(" ")
+
+        if in_fenced_code_block:
+            if stripped.startswith(fenced_code_char * fenced_code_length):
+                in_fenced_code_block = False
+            continue
+
+        if line.startswith("\t") or line.startswith("    "):
+            continue
+
+        match = re.match(r" {0,3}([`~]{3,})", line)
+        if match:
+            fence = match.group(1)
+            in_fenced_code_block = True
+            fenced_code_char = fence[0]
+            fenced_code_length = len(fence)
+            continue
+
+        sanitized_lines.append(remove_inline_code_spans(line))
+
+    sanitized = "\n".join(sanitized_lines)
+    return re.sub(r"<!--.*?-->", "", sanitized, flags=re.DOTALL)
 
 
 # https://gist.github.com/monkut/e60eea811ef085a6540f
