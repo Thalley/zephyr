@@ -52,7 +52,7 @@ CLOSING_KEYWORDS = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[:]?\s*"
 
 # Markdown container prefixes that may hold nested code blocks.
 BLOCK_QUOTE_MARKER = re.compile(r" {0,3}> ?")
-LIST_MARKER = re.compile(r"(?:[-+*]|\d{1,9}[.)])(?: +|$)")
+LIST_MARKER = re.compile(r"(?:[-+*]|\d{1,9}[.)])( +|$)")
 
 
 def is_escaped(text, index):
@@ -68,10 +68,17 @@ def is_escaped(text, index):
 
 
 def find_code_span_closer(text, start, run_length):
-    """Return the index of the next backtick run of exactly run_length, or -1."""
+    """Return the index of the next backtick run of exactly run_length, or -1.
+
+    A code span never spans a blank line, so the search stops at a block
+    boundary.
+    """
     i = start
 
     while i < len(text):
+        if text.startswith("\n\n", i):
+            return -1
+
         if text[i] != "`":
             i += 1
             continue
@@ -86,21 +93,25 @@ def find_code_span_closer(text, start, run_length):
     return -1
 
 
-def remove_inline_code_spans(text):
-    """Remove inline code spans.
+def remove_inline_constructs(text):
+    """Remove inline code spans and HTML comments in a single pass.
 
-    Unmatched backtick runs and escaped backticks are kept as literal text.
+    Unmatched backtick runs and escaped backticks are kept as literal text,
+    while an unclosed HTML comment runs to the end of the text.
     """
     out = []
     i = 0
 
     while i < len(text):
-        if text[i] != "`":
-            out.append(text[i])
-            i += 1
+        if text.startswith("<!--", i):
+            closing = text.find("-->", i + 4)
+            if closing == -1:
+                break
+
+            i = closing + 3
             continue
 
-        if is_escaped(text, i):
+        if text[i] != "`" or is_escaped(text, i):
             out.append(text[i])
             i += 1
             continue
@@ -120,27 +131,6 @@ def remove_inline_code_spans(text):
     return "".join(out)
 
 
-def remove_html_comments(text):
-    """Remove HTML comments, treating an unclosed comment as running to the end."""
-    out = []
-    i = 0
-
-    while i < len(text):
-        opening = text.find("<!--", i)
-        if opening == -1:
-            out.append(text[i:])
-            break
-
-        out.append(text[i:opening])
-        closing = text.find("-->", opening + 4)
-        if closing == -1:
-            break
-
-        i = closing + 3
-
-    return "".join(out)
-
-
 def split_block_quote_prefix(line):
     """Return the block quote depth of a line and its remaining content."""
     content = line.expandtabs(4)
@@ -156,7 +146,11 @@ def split_block_quote_prefix(line):
 
 
 def strip_list_markers(content, base_indent):
-    """Blank out leading list markers, returning the item content and its indent."""
+    """Blank out leading list markers, returning the item content and its indent.
+
+    More than four spaces after a marker are item content, not padding, so only
+    one space is consumed and the remainder is left to indent the content.
+    """
     indent = base_indent
     found = False
 
@@ -170,8 +164,12 @@ def strip_list_markers(content, base_indent):
         if match is None:
             break
 
-        indent = marker_indent + match.end()
-        content = " " * indent + stripped[match.end() :]
+        spaces = len(match.group(1))
+        marker_length = match.end() - spaces
+        padding = spaces if 1 <= spaces <= 4 else 1
+
+        indent = marker_indent + marker_length + padding
+        content = " " * indent + stripped[marker_length + padding :]
         found = True
 
     return found, indent, content
@@ -189,6 +187,11 @@ def strip_non_text_markdown_regions(body):
     base_indent = 0
     quote_depth = 0
     previous_line_blank = True
+
+    def end_block():
+        """Mark a block boundary so inline constructs do not pair across it."""
+        if text_lines and text_lines[-1] != "":
+            text_lines.append("")
 
     for line in body.splitlines():
         depth, content = split_block_quote_prefix(line)
@@ -209,12 +212,14 @@ def strip_non_text_markdown_regions(body):
             in_fenced_code_block = False
 
         if depth != quote_depth:
+            end_block()
             quote_depth = depth
             base_indent = 0
             in_indented_code_block = False
             previous_line_blank = True
 
         if blank:
+            end_block()
             previous_line_blank = True
             continue
 
@@ -227,18 +232,25 @@ def strip_non_text_markdown_regions(body):
         found, list_indent, content = strip_list_markers(content, base_indent)
         if found:
             base_indent = list_indent
-            indent = list_indent
+            indent = len(content) - len(content.lstrip(" "))
+            previous_line_blank = True
         else:
             base_indent = min(base_indent, indent)
 
         if previous_line_blank and indent >= base_indent + 4:
+            end_block()
             in_indented_code_block = True
             previous_line_blank = False
             continue
 
-        match = re.match(r" *(`{3,}|~{3,})", content)
-        if match and indent - base_indent <= 3:
+        match = re.match(r" *(`{3,}|~{3,})(.*)", content)
+        if (
+            match
+            and indent - base_indent <= 3
+            and not (match.group(1)[0] == "`" and "`" in match.group(2))
+        ):
             fence = match.group(1)
+            end_block()
             in_fenced_code_block = True
             fenced_code_char = fence[0]
             fenced_code_length = len(fence)
@@ -250,7 +262,7 @@ def strip_non_text_markdown_regions(body):
         text_lines.append(content)
         previous_line_blank = False
 
-    return remove_html_comments(remove_inline_code_spans("\n".join(text_lines)))
+    return remove_inline_constructs("\n".join(text_lines))
 
 
 # https://gist.github.com/monkut/e60eea811ef085a6540f
