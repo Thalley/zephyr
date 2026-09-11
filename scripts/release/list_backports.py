@@ -43,11 +43,20 @@ import sys
 
 # Requires PyGithub
 from github import Auth, Github
+from github.GithubException import UnknownObjectException
 
 # Keywords GitHub accepts to link a pull request to an issue, see
 # https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue
 # They are case insensitive and may be followed by an optional colon.
 CLOSING_KEYWORDS = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[:]?\s*"
+
+
+def strip_non_text_markdown_regions(body):
+    """Strip markdown regions where GitHub does not resolve closing keywords."""
+    sanitized = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
+    sanitized = re.sub(r"`[^`]*`", "", sanitized)
+    sanitized = re.sub(r"<!--.*?-->", "", sanitized, flags=re.DOTALL)
+    return sanitized
 
 
 # https://gist.github.com/monkut/e60eea811ef085a6540f
@@ -298,12 +307,16 @@ class Backport(object):
         for p in self._pulls:
             # check for issues in this pr
             issues_for_this_pr = {}
-            with io.StringIO(p.body or '') as buf:
+            body = strip_non_text_markdown_regions(p.body or '')
+            with io.StringIO(body) as buf:
                 for line in buf.readlines():
                     line = line.strip()
                     for match in issue_re.finditer(line):
                         issue_number = int(match[1])
-                        issue = self._repo.get_issue(issue_number)
+                        try:
+                            issue = self._repo.get_issue(issue_number)
+                        except UnknownObjectException:
+                            issue = None
                         if not issue:
                             self._pulls_with_invalid_issues.setdefault(p.number, []).append(
                                 issue_number
@@ -420,9 +433,9 @@ def main():
     pulls_with_invalid_issues = bp.get_pulls_with_invalid_issues()
     if pulls_with_invalid_issues:
         logging.error('The following PRs link to invalid issues:')
-        for p, lst in pulls_with_invalid_issues:
+        for pr_number, lst in pulls_with_invalid_issues.items():
             logging.error(
-                f'\nhttps://github.com/{repo.organization.login}/{repo.name}/pull/{p.number}: {lst}'
+                f'\nhttps://github.com/{repo.organization.login}/{repo.name}/pull/{pr_number}: {lst}'
             )
         return os.EX_DATAERR
 
