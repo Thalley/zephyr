@@ -50,6 +50,22 @@ from github.GithubException import UnknownObjectException
 # They are case insensitive and may be followed by an optional colon.
 CLOSING_KEYWORDS = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[:]?\s*"
 
+# Markdown container prefixes that may hold nested code blocks.
+BLOCK_QUOTE_MARKER = re.compile(r" {0,3}> ?")
+LIST_MARKER = re.compile(r"(?:[-+*]|\d{1,9}[.)])(?: +|$)")
+
+
+def is_escaped(text, index):
+    """Return True when the character at index is preceded by an odd backslash run."""
+    backslashes = 0
+    i = index - 1
+
+    while i >= 0 and text[i] == "\\":
+        backslashes += 1
+        i -= 1
+
+    return backslashes % 2 == 1
+
 
 def find_code_span_closer(text, start, run_length):
     """Return the index of the next backtick run of exactly run_length, or -1."""
@@ -71,12 +87,20 @@ def find_code_span_closer(text, start, run_length):
 
 
 def remove_inline_code_spans(text):
-    """Remove inline code spans, keeping unmatched backtick runs as literal text."""
+    """Remove inline code spans.
+
+    Unmatched backtick runs and escaped backticks are kept as literal text.
+    """
     out = []
     i = 0
 
     while i < len(text):
         if text[i] != "`":
+            out.append(text[i])
+            i += 1
+            continue
+
+        if is_escaped(text, i):
             out.append(text[i])
             i += 1
             continue
@@ -117,47 +141,114 @@ def remove_html_comments(text):
     return "".join(out)
 
 
+def split_block_quote_prefix(line):
+    """Return the block quote depth of a line and its remaining content."""
+    content = line.expandtabs(4)
+    depth = 0
+
+    while True:
+        match = BLOCK_QUOTE_MARKER.match(content)
+        if match is None:
+            return depth, content
+
+        content = content[match.end() :]
+        depth += 1
+
+
+def strip_list_markers(content, base_indent):
+    """Blank out leading list markers, returning the item content and its indent."""
+    indent = base_indent
+    found = False
+
+    while True:
+        stripped = content.lstrip(" ")
+        marker_indent = len(content) - len(stripped)
+        if marker_indent > indent + 3:
+            break
+
+        match = LIST_MARKER.match(stripped)
+        if match is None:
+            break
+
+        indent = marker_indent + match.end()
+        content = " " * indent + stripped[match.end() :]
+        found = True
+
+    return found, indent, content
+
+
 def strip_non_text_markdown_regions(body):
     """Strip markdown regions where GitHub does not resolve closing keywords."""
     text_lines = []
     in_fenced_code_block = False
     fenced_code_char = ""
     fenced_code_length = 0
+    fenced_code_indent = 0
+    fenced_code_depth = 0
     in_indented_code_block = False
+    base_indent = 0
+    quote_depth = 0
     previous_line_blank = True
 
     for line in body.splitlines():
+        depth, content = split_block_quote_prefix(line)
+        blank = content.strip() == ""
+        indent = len(content) - len(content.lstrip(" "))
+
         if in_fenced_code_block:
-            if re.fullmatch(
-                rf" {{0,3}}{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
-                line,
-            ):
-                in_fenced_code_block = False
-                previous_line_blank = True
+            if depth == fenced_code_depth:
+                if re.fullmatch(
+                    rf" {{0,{fenced_code_indent + 3}}}"
+                    rf"{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
+                    content,
+                ):
+                    in_fenced_code_block = False
+                continue
+            if blank:
+                continue
+            in_fenced_code_block = False
+
+        if depth != quote_depth:
+            quote_depth = depth
+            base_indent = 0
+            in_indented_code_block = False
+            previous_line_blank = True
+
+        if blank:
+            previous_line_blank = True
             continue
 
         if in_indented_code_block:
-            if line.startswith("    ") or line.startswith("\t") or line.strip() == "":
-                previous_line_blank = line.strip() == ""
+            if indent >= base_indent + 4:
+                previous_line_blank = False
                 continue
             in_indented_code_block = False
 
-        if (line.startswith("    ") or line.startswith("\t")) and previous_line_blank:
+        found, list_indent, content = strip_list_markers(content, base_indent)
+        if found:
+            base_indent = list_indent
+            indent = list_indent
+        else:
+            base_indent = min(base_indent, indent)
+
+        if previous_line_blank and indent >= base_indent + 4:
             in_indented_code_block = True
             previous_line_blank = False
             continue
 
-        match = re.match(r" {0,3}(`{3,}|~{3,}).*$", line)
-        if match:
+        match = re.match(r" *(`{3,}|~{3,})", content)
+        if match and indent - base_indent <= 3:
             fence = match.group(1)
             in_fenced_code_block = True
             fenced_code_char = fence[0]
             fenced_code_length = len(fence)
+            fenced_code_indent = indent
+            fenced_code_depth = depth
             previous_line_blank = False
             continue
 
-        text_lines.append(line)
-        previous_line_blank = line.strip() == ""
+        text_lines.append(content)
+        previous_line_blank = False
 
     return remove_html_comments(remove_inline_code_spans("\n".join(text_lines)))
 
