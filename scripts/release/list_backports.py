@@ -87,7 +87,10 @@ def strip_non_text_markdown_regions(body):
         stripped = line.lstrip(" ")
 
         if in_fenced_code_block:
-            if stripped.startswith(fenced_code_char * fenced_code_length):
+            if re.fullmatch(
+                rf"{re.escape(fenced_code_char)}{{{fenced_code_length},}}[ \t]*",
+                stripped,
+            ):
                 in_fenced_code_block = False
             continue
 
