@@ -576,6 +576,19 @@ uint16_t bt_gatt_get_mtu(struct bt_conn *conn)
 	return 64;
 }
 
+uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn)
+{
+	/* Opcode (1 octet) + attribute handle (2 octets) */
+	const uint16_t att_ntf_hdr_size = 3U;
+	const uint16_t mtu = conn == NULL ? 0U : bt_gatt_get_mtu(conn);
+
+	if (mtu > att_ntf_hdr_size) {
+		return mtu - att_ntf_hdr_size;
+	}
+
+	return 0U;
+}
+
 bool bt_gatt_is_subscribed(struct bt_conn *conn,
 			   const struct bt_gatt_attr *attr, uint16_t ccc_type)
 {

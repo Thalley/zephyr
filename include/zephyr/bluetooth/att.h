@@ -199,6 +199,47 @@ enum bt_att_chan_opt {
 	BT_ATT_CHAN_OPT_ENHANCED_ONLY = BIT(1),
 };
 
+/** @brief Get the maximum notification value size for a connection
+ *
+ * The value of an ATT_HANDLE_VALUE_NTF PDU is limited to ATT_MTU - 3, where the 3 octets are
+ * the opcode and the attribute handle, as defined by the Bluetooth Core Specification,
+ * Version 6.1, Vol 3, Part F, Section 3.4.7.1.
+ *
+ * Values larger than this either have to be truncated by the sender, or read by the client
+ * with a read request.
+ *
+ * @note The ATT_MTU may change during the lifetime of a connection, so the result of this
+ * function shall not be cached.
+ *
+ * @param conn The connection to get the maximum notification value size for.
+ *
+ * @return The maximum notification value size in octets, or 0 if @p conn is NULL, not
+ * connected or the ATT_MTU is unknown.
+ */
+uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn);
+
+/** @brief Get the maximum indication value size for a connection
+ *
+ * The value of an ATT_HANDLE_VALUE_IND PDU is limited to ATT_MTU - 3, where the 3 octets are
+ * the opcode and the attribute handle, as defined by the Bluetooth Core Specification,
+ * Version 6.1, Vol 3, Part F, Section 3.4.7.2. This is the same limit as for notifications.
+ *
+ * Values larger than this either have to be truncated by the sender, or read by the client
+ * with a read request.
+ *
+ * @note The ATT_MTU may change during the lifetime of a connection, so the result of this
+ * function shall not be cached.
+ *
+ * @param conn The connection to get the maximum indication value size for.
+ *
+ * @return The maximum indication value size in octets, or 0 if @p conn is NULL, not
+ * connected or the ATT_MTU is unknown.
+ */
+static inline uint16_t bt_att_get_max_ind_size(struct bt_conn *conn)
+{
+	return bt_att_get_max_ntf_size(conn);
+}
+
 #ifdef __cplusplus
 }
 #endif

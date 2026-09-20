@@ -511,6 +511,8 @@ New APIs and options
 
   * Host
 
+    * :c:func:`bt_att_get_max_ntf_size`
+    * :c:func:`bt_att_get_max_ind_size`
     * :c:func:`bt_conn_take`
     * :c:func:`bt_conn_drop`
     * :c:func:`bt_iso_chan_state_str`
