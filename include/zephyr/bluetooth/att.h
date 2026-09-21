@@ -214,8 +214,8 @@ enum bt_att_chan_opt {
  *
  * @param conn The connection to get the maximum notification value size for.
  *
- * @return The maximum notification value size in octets, or 0 if @p conn is NULL, not
- * connected or the ATT_MTU is unknown.
+ * @return The maximum notification value size in octets, or 0 if @p conn is NULL or not
+ * connected.
  */
 uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn);
 
@@ -234,8 +234,8 @@ uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn);
  *
  * @param conn The connection to get the maximum indication value size for.
  *
- * @return The maximum indication value size in octets, or 0 if @p conn is NULL, not
- * connected or the ATT_MTU is unknown.
+ * @return The maximum indication value size in octets, or 0 if @p conn is NULL or not
+ * connected.
  */
 static inline uint16_t bt_att_get_max_ind_size(struct bt_conn *conn)
 {

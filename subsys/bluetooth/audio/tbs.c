@@ -422,7 +422,7 @@ static int notify(struct bt_conn *conn, const struct bt_uuid *uuid,
 	const uint16_t maxlen = bt_att_get_max_ntf_size(conn);
 
 	if (maxlen == 0U) {
-		/* Not connected, or the ATT_MTU is unknown */
+		/* Not connected */
 		return -ENOTCONN;
 	}
 

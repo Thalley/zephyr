@@ -848,9 +848,10 @@ static ssize_t write_vnd1(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	if (echo_enabled) {
 		const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
 		const uint16_t ntf_len = MIN(len, max_ntf_size);
+		int err;
 
 		if (max_ntf_size == 0U) {
-			/* Not connected, or the ATT_MTU is unknown */
+			/* Not connected */
 			return len;
 		}
 
@@ -860,7 +861,10 @@ static ssize_t write_vnd1(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			bt_shell_print("Echo attr len %u", len);
 		}
 
-		bt_gatt_notify(conn, attr, buf, ntf_len);
+		err = bt_gatt_notify(conn, attr, buf, ntf_len);
+		if (err != 0) {
+			bt_shell_error("Failed to notify echo: %d", err);
+		}
 	}
 
 	return len;
@@ -1047,7 +1051,7 @@ static void notify_conn_cb(struct bt_conn *conn, void *user_data)
 	int err;
 
 	if (max_ntf_size == 0U) {
-		/* Not connected, or the ATT_MTU is unknown */
+		/* Not connected */
 		return;
 	}
 

@@ -3988,7 +3988,6 @@ uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn)
 	}
 
 	mtu = bt_att_get_mtu(conn);
-
 	if (mtu > att_ntf_hdr_size) {
 		return mtu - att_ntf_hdr_size;
 	}
