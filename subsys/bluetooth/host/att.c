@@ -3977,6 +3977,24 @@ uint16_t bt_att_get_uatt_mtu(struct bt_conn *conn)
 	return 0;
 }
 
+uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn)
+{
+	/* Opcode (1 octet) + attribute handle (2 octets) */
+	const uint16_t att_ntf_hdr_size = sizeof(struct bt_att_hdr) + sizeof(struct bt_att_notify);
+	uint16_t mtu;
+
+	if (conn == NULL) {
+		return 0U;
+	}
+
+	mtu = bt_att_get_mtu(conn);
+	if (mtu > att_ntf_hdr_size) {
+		return mtu - att_ntf_hdr_size;
+	}
+
+	return 0U;
+}
+
 static void att_chan_mtu_updated(struct bt_att_chan *updated_chan)
 {
 	struct bt_att *att = updated_chan->att;
