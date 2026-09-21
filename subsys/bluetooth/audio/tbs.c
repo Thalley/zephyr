@@ -421,7 +421,10 @@ static int notify(struct bt_conn *conn, const struct bt_uuid *uuid,
 {
 	const uint16_t maxlen = bt_att_get_max_ntf_size(conn);
 
-	__ASSERT(maxlen > 0U, "Could not get valid ATT MTU");
+	if (maxlen == 0U) {
+		/* Not connected, or the ATT_MTU is unknown */
+		return -ENOTCONN;
+	}
 
 	if (maxlen < value_len) {
 		LOG_DBG("Truncating notification to %u (was %u)", maxlen, value_len);

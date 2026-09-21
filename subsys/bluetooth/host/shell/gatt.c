@@ -849,6 +849,11 @@ static ssize_t write_vnd1(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 		const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
 		const uint16_t ntf_len = MIN(len, max_ntf_size);
 
+		if (max_ntf_size == 0U) {
+			/* Not connected, or the ATT_MTU is unknown */
+			return len;
+		}
+
 		if (ntf_len < len) {
 			bt_shell_print("Echo attr len %u truncated to %u", len, ntf_len);
 		} else {
@@ -1027,12 +1032,46 @@ static const struct bt_gatt_attr *find_attr(uint16_t handle)
 	return attr;
 }
 
+struct notify_conn_data {
+	const struct shell *sh;
+	const struct bt_gatt_attr *attr;
+	const char *data;
+	size_t data_len;
+};
+
+static void notify_conn_cb(struct bt_conn *conn, void *user_data)
+{
+	struct notify_conn_data *notify_data = user_data;
+	const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
+	size_t data_len = notify_data->data_len;
+	int err;
+
+	if (max_ntf_size == 0U) {
+		/* Not connected, or the ATT_MTU is unknown */
+		return;
+	}
+
+	if (data_len > max_ntf_size) {
+		shell_print(notify_data->sh,
+			    "Truncating notification to conn %p from %zu to %u octets.", conn,
+			    data_len, max_ntf_size);
+		data_len = max_ntf_size;
+	}
+
+	err = bt_gatt_notify(conn, notify_data->attr, notify_data->data, data_len);
+	if (err != 0 && err != -ENOTCONN) {
+		/* -ENOTCONN means that the connection has not subscribed */
+		shell_error(notify_data->sh, "bt_gatt_notify to conn %p errno %d (%s)", conn, -err,
+			    strerror(-err));
+	}
+}
+
 static int cmd_notify(const struct shell *sh, size_t argc, char *argv[])
 {
 	const struct bt_gatt_attr *attr;
+	struct notify_conn_data notify_data;
 	int err;
 	size_t data_len;
-	uint16_t max_ntf_size;
 	unsigned long handle;
 	static char data[BT_ATT_MAX_ATTRIBUTE_LEN];
 
@@ -1070,22 +1109,17 @@ static int cmd_notify(const struct shell *sh, size_t argc, char *argv[])
 	}
 
 	/* The notification goes to every subscriber, which may have negotiated different ATT
-	 * MTUs. Truncate to what the default connection can carry, as that is the one the shell
-	 * user is working with.
+	 * MTUs, so notify each connection individually to be able to truncate the value to what
+	 * that connection can carry.
 	 */
-	max_ntf_size = bt_att_get_max_ntf_size(default_conn);
-	if (max_ntf_size > 0U && data_len > max_ntf_size) {
-		shell_print(sh, "Truncating notification from %zu to %u octets.", data_len,
-			    max_ntf_size);
-		data_len = max_ntf_size;
-	}
+	notify_data.sh = sh;
+	notify_data.attr = attr;
+	notify_data.data = data;
+	notify_data.data_len = data_len;
 
-	err = bt_gatt_notify(NULL, attr, data, data_len);
-	if (err) {
-		shell_error(sh, "bt_gatt_notify errno %d (%s)", -err, strerror(-err));
-	}
+	bt_conn_foreach(BT_CONN_TYPE_LE, notify_conn_cb, &notify_data);
 
-	return err;
+	return 0;
 }
 
 #if defined(CONFIG_BT_GATT_NOTIFY_MULTIPLE)
