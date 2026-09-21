@@ -834,37 +834,32 @@ static const struct bt_uuid_128 vnd1_uuid = BT_UUID_INIT_128(
 static const struct bt_uuid_128 vnd1_echo_uuid = BT_UUID_INIT_128(
 	BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x12340, 0x56789abcdef5));
 
-static uint8_t echo_enabled;
-
-static void vnd1_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	echo_enabled = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
-}
-
 static ssize_t write_vnd1(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			  const void *buf, uint16_t len, uint16_t offset,
 			  uint8_t flags)
 {
-	if (echo_enabled) {
-		const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
-		const uint16_t ntf_len = MIN(len, max_ntf_size);
-		int err;
+	const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
+	const uint16_t ntf_len = MIN(len, max_ntf_size);
+	int err;
 
-		if (max_ntf_size == 0U) {
-			/* Not connected */
-			return len;
-		}
+	if (max_ntf_size == 0U) {
+		/* Not connected */
+		return len;
+	}
 
-		if (ntf_len < len) {
-			bt_shell_print("Echo attr len %u truncated to %u", len, ntf_len);
-		} else {
-			bt_shell_print("Echo attr len %u", len);
-		}
+	if (!bt_gatt_is_subscribed(conn, attr, BT_GATT_CCC_NOTIFY)) {
+		return len;
+	}
 
-		err = bt_gatt_notify(conn, attr, buf, ntf_len);
-		if (err != 0) {
-			bt_shell_error("Failed to notify echo: %d", err);
-		}
+	if (ntf_len < len) {
+		bt_shell_print("Echo attr len %u truncated to %u", len, ntf_len);
+	} else {
+		bt_shell_print("Echo attr len %u", len);
+	}
+
+	err = bt_gatt_notify(conn, attr, buf, ntf_len);
+	if (err != 0) {
+		bt_shell_error("Failed to notify echo: %d", err);
 	}
 
 	return len;
@@ -961,8 +956,7 @@ static struct bt_gatt_attr vnd1_attrs[] = {
 			       BT_GATT_CHRC_WRITE_WITHOUT_RESP |
 			       BT_GATT_CHRC_NOTIFY,
 			       BT_GATT_PERM_WRITE, NULL, write_vnd1, NULL),
-	BT_GATT_CCC(vnd1_ccc_cfg_changed,
-		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 };
 
 static struct bt_gatt_service vnd1_svc = BT_GATT_SERVICE(vnd1_attrs);
