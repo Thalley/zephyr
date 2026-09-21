@@ -1335,8 +1335,13 @@ struct bt_ots *bt_mcs_get_ots(void)
 /* Placed here, after the service definition, because they reference it. */
 static int notify(struct bt_conn *conn, const struct bt_uuid *uuid, const void *data, uint16_t len)
 {
-	const uint16_t max_ntf_size = bt_audio_get_max_ntf_size(conn);
+	int max_ntf_size = bt_att_get_max_ntf_size(conn, BT_ATT_CHAN_OPT_NONE);
 	int err;
+
+	if (max_ntf_size < 0) {
+		LOG_DBG("Failed to get max notification size for %p: %d", conn, max_ntf_size);
+		return max_ntf_size;
+	}
 
 	if (max_ntf_size < len) {
 		LOG_DBG("Truncating notification to %u (was %u) for %p", max_ntf_size, len, conn);

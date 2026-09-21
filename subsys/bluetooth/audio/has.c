@@ -771,7 +771,12 @@ static void control_point_ind_complete(struct bt_conn *conn,
 
 static int control_point_send(struct has_client *client, struct net_buf_simple *buf)
 {
-	const uint16_t max_ntf_size = bt_audio_get_max_ntf_size(client->conn);
+	const int max_ntf_size = bt_att_get_max_ntf_size(client->conn, BT_ATT_CHAN_OPT_NONE);
+
+	if (max_ntf_size < 0) {
+		LOG_DBG("Failed to get max notification size: %d", max_ntf_size);
+		return max_ntf_size;
+	}
 
 	if (max_ntf_size < buf->len) {
 		LOG_WRN("Sending truncated control point PDU %u < %u", max_ntf_size, buf->len);

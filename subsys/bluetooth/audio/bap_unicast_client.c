@@ -1816,7 +1816,7 @@ static uint8_t unicast_client_ep_notify(struct bt_conn *conn,
 {
 	struct net_buf_simple buf;
 	struct bt_bap_unicast_client_ep *client_ep;
-	uint16_t max_ntf_size;
+	int max_ntf_size;
 	struct bt_bap_ep *ep;
 
 	client_ep = CONTAINER_OF(params, struct bt_bap_unicast_client_ep, subscribe);
@@ -1833,9 +1833,9 @@ static uint8_t unicast_client_ep_notify(struct bt_conn *conn,
 		return BT_GATT_ITER_STOP;
 	}
 
-	max_ntf_size = bt_audio_get_max_ntf_size(conn);
+	max_ntf_size = bt_att_get_max_ntf_size(conn, BT_ATT_CHAN_OPT_NONE);
 
-	if (length == max_ntf_size) {
+	if (max_ntf_size >= 0 && length == max_ntf_size) {
 		struct unicast_client *client = &uni_cli_insts[bt_conn_index(conn)];
 
 		if (!atomic_test_bit(client->flags, UNICAST_CLIENT_FLAG_BUSY)) {
@@ -2162,13 +2162,19 @@ static void gatt_write_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_writ
 int bt_bap_unicast_client_ep_send(struct bt_conn *conn, struct bt_bap_ep *ep,
 				  struct net_buf_simple *buf)
 {
-	const uint16_t max_write_size = bt_audio_get_max_ntf_size(conn);
 	struct unicast_client *client = &uni_cli_insts[bt_conn_index(conn)];
 	struct bt_bap_unicast_client_ep *client_ep =
 		CONTAINER_OF(ep, struct bt_bap_unicast_client_ep, ep);
+	int max_write_size;
 	int err;
 
 	LOG_DBG("conn %p ep %p buf %p len %u", conn, ep, buf, buf->len);
+
+	max_write_size = bt_att_get_max_ntf_size(conn, BT_ATT_CHAN_OPT_NONE);
+	if (max_write_size < 0) {
+		LOG_DBG("Failed to get max write size: %d", max_write_size);
+		return max_write_size;
+	}
 
 	if (buf->len > max_write_size) {
 		if (atomic_test_and_set_bit(client->flags, UNICAST_CLIENT_FLAG_BUSY)) {
