@@ -245,7 +245,7 @@ static int ase_state_notify(struct bt_ascs_ase *ase)
 
 	ascs_ep_get_status(&ase->ep, &ase_buf);
 
-	max_ntf_size = bt_audio_get_max_ntf_size(conn);
+	max_ntf_size = bt_att_get_max_ntf_size(conn);
 
 	ntf_size = MIN(max_ntf_size, ase_buf.len);
 	if (ntf_size < ase_buf.len) {
@@ -2087,7 +2087,7 @@ int bt_ascs_metadata_ase(struct bt_bap_ep *ep, const uint8_t meta[], size_t meta
 
 static uint16_t get_max_ase_rsp_for_conn(struct bt_conn *conn)
 {
-	const uint16_t max_ntf_size = bt_audio_get_max_ntf_size(conn);
+	const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
 	const size_t rsp_hdr_size = sizeof(struct bt_ascs_cp_rsp);
 
 	if (max_ntf_size > rsp_hdr_size) {

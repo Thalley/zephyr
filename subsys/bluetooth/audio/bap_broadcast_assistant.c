@@ -531,7 +531,7 @@ static uint8_t notify_handler(struct bt_conn *conn,
 	}
 
 	if (length != 0) {
-		const uint16_t max_ntf_size = bt_audio_get_max_ntf_size(conn);
+		const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
 
 		/* Cancel any pending long reads containing now obsolete information */
 		(void)k_work_cancel_delayable(&inst->bap_read_work);
