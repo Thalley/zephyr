@@ -199,7 +199,8 @@ enum bt_att_chan_opt {
 	BT_ATT_CHAN_OPT_ENHANCED_ONLY = BIT(1),
 };
 
-/** @brief Get the maximum notification value size for a connection
+/**
+ * @brief Get the maximum notification value size for a connection
  *
  * The value of an ATT_HANDLE_VALUE_NTF PDU is limited to ATT_MTU - 3, where the 3 octets are
  * the opcode and the attribute handle, as defined by the Bluetooth Core Specification,
@@ -218,7 +219,8 @@ enum bt_att_chan_opt {
  */
 uint16_t bt_att_get_max_ntf_size(struct bt_conn *conn);
 
-/** @brief Get the maximum indication value size for a connection
+/**
+ * @brief Get the maximum indication value size for a connection
  *
  * The value of an ATT_HANDLE_VALUE_IND PDU is limited to ATT_MTU - 3, where the 3 octets are
  * the opcode and the attribute handle, as defined by the Bluetooth Core Specification,

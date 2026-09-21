@@ -614,6 +614,11 @@ static uint8_t notify_func(struct bt_conn *conn,
 		       params->value_handle, length);
 	bt_shell_hexdump(data, length);
 
+	if (length > 0U && length == bt_att_get_max_ntf_size(conn)) {
+		bt_shell_print("Value fills a notification, it may have been truncated. Read the "
+			       "characteristic to get the complete value.");
+	}
+
 	return BT_GATT_ITER_CONTINUE;
 }
 
@@ -841,8 +846,16 @@ static ssize_t write_vnd1(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			  uint8_t flags)
 {
 	if (echo_enabled) {
-		bt_shell_print("Echo attr len %u", len);
-		bt_gatt_notify(conn, attr, buf, len);
+		const uint16_t max_ntf_size = bt_att_get_max_ntf_size(conn);
+		const uint16_t ntf_len = MIN(len, max_ntf_size);
+
+		if (ntf_len < len) {
+			bt_shell_print("Echo attr len %u truncated to %u", len, ntf_len);
+		} else {
+			bt_shell_print("Echo attr len %u", len);
+		}
+
+		bt_gatt_notify(conn, attr, buf, ntf_len);
 	}
 
 	return len;
@@ -1019,6 +1032,7 @@ static int cmd_notify(const struct shell *sh, size_t argc, char *argv[])
 	const struct bt_gatt_attr *attr;
 	int err;
 	size_t data_len;
+	uint16_t max_ntf_size;
 	unsigned long handle;
 	static char data[BT_ATT_MAX_ATTRIBUTE_LEN];
 
@@ -1053,6 +1067,17 @@ static int cmd_notify(const struct shell *sh, size_t argc, char *argv[])
 	if (!attr) {
 		shell_error(sh, "Handle 0x%lx: Local attribute not found.", handle);
 		return -EINVAL;
+	}
+
+	/* The notification goes to every subscriber, which may have negotiated different ATT
+	 * MTUs. Truncate to what the default connection can carry, as that is the one the shell
+	 * user is working with.
+	 */
+	max_ntf_size = bt_att_get_max_ntf_size(default_conn);
+	if (max_ntf_size > 0U && data_len > max_ntf_size) {
+		shell_print(sh, "Truncating notification from %zu to %u octets.", data_len,
+			    max_ntf_size);
+		data_len = max_ntf_size;
 	}
 
 	err = bt_gatt_notify(NULL, attr, data, data_len);
