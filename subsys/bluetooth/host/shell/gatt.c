@@ -1055,6 +1055,10 @@ static void notify_conn_cb(struct bt_conn *conn, void *user_data)
 		return;
 	}
 
+	if (!bt_gatt_is_subscribed(conn, notify_data->attr, BT_GATT_CCC_NOTIFY)) {
+		return;
+	}
+
 	if (data_len > max_ntf_size) {
 		shell_print(notify_data->sh,
 			    "Truncating notification to conn %p from %zu to %u octets.", conn,
