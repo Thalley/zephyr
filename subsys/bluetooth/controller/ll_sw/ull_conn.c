@@ -1933,8 +1933,10 @@ static void conn_cleanup_finalize(struct ll_conn *conn)
 				ll_conn_iso_stream_release(cis);
 				cig->lll.num_cis--;
 
-				if (cig->lll.num_cis == 0U) {
-					/* No more streams in the group - release group */
+				if (cig->lll.num_cis == 0U && cig->state != CIG_STATE_ACTIVE) {
+					/* No more streams in the group - release group. An active
+					 * group is released once its ticker has been stopped.
+					 */
 					ll_conn_iso_group_release(cig);
 				}
 			} else if (IS_CENTRAL(cig) && cig->state == CIG_STATE_INITIATING &&
