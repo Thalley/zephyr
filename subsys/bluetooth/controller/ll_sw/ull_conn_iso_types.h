@@ -73,6 +73,7 @@ struct ll_conn_iso_stream {
 		struct node_rx_pdu rx;
 		struct node_rx_conn_iso_estab estab;
 	} node_rx_estab;
+	memq_link_t *estab_link;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 };
 

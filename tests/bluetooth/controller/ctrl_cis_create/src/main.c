@@ -1268,6 +1268,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 	struct node_rx_pdu *retained;
 	struct node_rx_pdu *held = NULL;
 	struct node_rx_pdu *ntf;
+	memq_link_t *held_links = NULL;
+	memq_link_t *link;
 	struct proc_ctx *ctx;
 	uint8_t held_count = 0U;
 
@@ -1279,6 +1281,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	active_cis.lll.handle = LL_CIS_HANDLE_BASE;
 	active_cis.lll.acl_handle = conn.lll.handle;
+	active_cis.estab_link = ll_rx_link_alloc();
+	zassert_not_null(active_cis.estab_link);
 	zassert_equal(ull_cp_cis_create(&conn, &active_cis), BT_HCI_ERR_SUCCESS);
 	event_prepare(&conn);
 	event_done(&conn);
@@ -1290,6 +1294,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	queued_cis.lll.handle = LL_CIS_HANDLE_BASE + 1U;
 	queued_cis.lll.acl_handle = conn.lll.handle;
+	queued_cis.estab_link = ll_rx_link_alloc();
+	zassert_not_null(queued_cis.estab_link);
 	zassert_equal(ull_cp_cis_create(&conn, &queued_cis), BT_HCI_ERR_SUCCESS);
 	ctx = llcp_lr_peek_cc(&conn, queued_cis.lll.handle);
 	zassert_not_null(ctx);
@@ -1304,16 +1310,32 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 		held_count++;
 	}
 
+	/* Flushing must use the reserved link even when the shared pool is empty. */
+	link = ll_rx_link_alloc();
+	while (link != NULL) {
+		link->next = held_links;
+		held_links = link;
+		link = ll_rx_link_alloc();
+	}
+
 	SET_RETURN_SEQ(ll_conn_iso_stream_get, streams, ARRAY_SIZE(streams));
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
+
+	while (held_links != NULL) {
+		link = held_links;
+		held_links = link->next;
+		ll_rx_link_release(link);
+	}
 
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	zassert_equal_ptr(ntf, retained);
 	release_ntf(ntf);
+	zassert_is_null(active_cis.estab_link);
 
 	cis_estab.cis_handle = queued_cis.lll.handle;
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	zassert_equal_ptr(ntf, &queued_cis.node_rx_estab.rx);
+	zassert_is_null(queued_cis.estab_link);
 	release_ntf(ntf);
 	zassert_equal(queued_cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
 	ut_rx_q_is_empty();
@@ -1321,6 +1343,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	/* Reuse the same reserved node after its notification has been consumed. */
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
+	queued_cis.estab_link = ll_rx_link_alloc();
+	zassert_not_null(queued_cis.estab_link);
 	zassert_equal(ull_cp_cis_create(&conn, &queued_cis), BT_HCI_ERR_SUCCESS);
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
@@ -1339,6 +1363,48 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	zassert_true(llcp_ntf_alloc_num_available(held_count + 1U));
 	zassert_false(llcp_ntf_alloc_num_available(held_count + 2U));
+}
+
+ZTEST(cis_create, test_cc_cancelled_queued_still_pending)
+{
+	struct ll_conn_iso_stream cis = { .group = &cig_mock };
+	struct node_rx_conn_iso_estab cis_estab = {
+		.cis_handle = LL_CIS_HANDLE_BASE,
+		.status = BT_HCI_ERR_OP_CANCELLED_BY_HOST,
+	};
+	struct node_rx_pdu *ntf;
+
+	ll_conn_iso_stream_get_fake.return_val = &cis;
+	test_set_role(&conn, BT_HCI_ROLE_CENTRAL);
+	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
+	conn.llcp.fex.valid = 1U;
+	conn.llcp.fex.features_peer |= BIT64(BT_LE_FEAT_BIT_CIS_PERIPHERAL);
+
+	/* Hold CIS Create behind a different procedure. */
+	zassert_equal(ull_cp_version_exchange(&conn), BT_HCI_ERR_SUCCESS);
+	cis.lll.handle = LL_CIS_HANDLE_BASE;
+	cis.lll.acl_handle = conn.lll.handle;
+	cis.estab_link = ll_rx_link_alloc();
+	zassert_not_null(cis.estab_link);
+	zassert_equal(ull_cp_cis_create(&conn, &cis), BT_HCI_ERR_SUCCESS);
+	zassert_true(ull_lp_cc_is_pending(&conn, &cis));
+	zassert_true(ull_lp_cc_is_enqueued(&conn, &cis));
+
+	zassert_true(ull_cp_cc_cancel(&conn, &cis));
+	zassert_false(ull_lp_cc_is_active(&conn));
+	zassert_false(ull_lp_cc_is_enqueued(&conn, &cis));
+	zassert_true(ull_lp_cc_is_pending(&conn, &cis));
+	zassert_equal(cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
+
+	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
+	zassert_false(ull_lp_cc_is_pending(&conn, &cis));
+	zassert_is_null(cis.estab_link);
+	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
+	zassert_equal_ptr(ntf, &cis.node_rx_estab.rx);
+	release_ntf(ntf);
+	zassert_equal(cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
+	ut_rx_q_is_empty();
+	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt());
 }
 
 ZTEST_SUITE(cis_create, NULL, NULL, cis_create_setup, NULL, NULL);

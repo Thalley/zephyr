@@ -1703,6 +1703,11 @@ void ll_rx_mem_release(void **node_rx)
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 			struct ll_conn_iso_stream *cis = rx_free->rx_ftr.param;
 
+			if ((cis != NULL) && (cis->estab_link != NULL)) {
+				ll_rx_link_release(cis->estab_link);
+				cis->estab_link = NULL;
+			}
+
 			if ((cis != NULL) && (rx_free == &cis->node_rx_estab.rx)) {
 				rx_free->hdr.next = NULL;
 				rx_free->hdr.type = NODE_RX_TYPE_NONE;

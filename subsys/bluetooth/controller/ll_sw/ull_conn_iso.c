@@ -143,6 +143,7 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 		cis->node_rx_estab.rx.hdr.type = NODE_RX_TYPE_NONE;
+		cis->estab_link = NULL;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 	}
 
@@ -151,6 +152,13 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 
 void ll_conn_iso_stream_release(struct ll_conn_iso_stream *cis)
 {
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	if (cis->estab_link != NULL) {
+		ll_rx_link_release(cis->estab_link);
+		cis->estab_link = NULL;
+	}
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
+
 	cis->cis_id = 0;
 	cis->group = NULL;
 

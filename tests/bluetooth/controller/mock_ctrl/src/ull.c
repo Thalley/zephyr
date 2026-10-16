@@ -152,6 +152,11 @@ void ll_rx_mem_release(void **node_rx)
 			struct node_rx_pdu *node = (void *)rx_free;
 			struct ll_conn_iso_stream *cis = node->rx_ftr.param;
 
+			if ((cis != NULL) && (cis->estab_link != NULL)) {
+				mem_release(cis->estab_link, &mem_link_rx.free);
+				cis->estab_link = NULL;
+			}
+
 			if ((cis != NULL) && (node == &cis->node_rx_estab.rx)) {
 				node->hdr.next = NULL;
 				node->hdr.type = NODE_RX_TYPE_NONE;
