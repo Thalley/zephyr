@@ -17,6 +17,11 @@ typedef void (*ll_iso_stream_released_cb_t)(struct ll_conn *conn);
 #define CIG_STATE_ACTIVE       3
 #define CIG_STATE_INACTIVE     4
 
+struct node_rx_conn_iso_estab {
+	uint16_t cis_handle;
+	uint8_t  status;
+};
+
 struct ll_conn_iso_stream {
 	struct ll_iso_stream_hdr hdr;
 	struct lll_conn_iso_stream lll;
@@ -65,6 +70,13 @@ struct ll_conn_iso_stream {
 		/* Dummy declaration to ensure space allocated to hold one pdu byte */
 		uint8_t dummy_reason;
 	} node_rx_terminate;
+
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	struct {
+		struct node_rx_pdu rx;
+		struct node_rx_conn_iso_estab estab;
+	} node_rx_estab;
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 };
 
 struct ll_conn_iso_group {
@@ -109,9 +121,4 @@ struct node_rx_conn_iso_req {
 	uint16_t cis_handle;
 	uint8_t  cig_id;
 	uint8_t  cis_id;
-};
-
-struct node_rx_conn_iso_estab {
-	uint16_t cis_handle;
-	uint8_t  status;
 };

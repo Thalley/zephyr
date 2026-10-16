@@ -866,11 +866,15 @@ void llcp_lp_cc_flush(struct ll_conn *conn, struct proc_ctx *ctx)
 		ctx->data.cis_create.error = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
 	}
 
-	/* FIXME - we currently have no way to recover if we cannot allocate a node here */
 	if (ctx->node_ref.rx == NULL) {
-		ctx->node_ref.rx = llcp_ntf_alloc();
-		LL_ASSERT_ERR(ctx->node_ref.rx);
+		struct ll_conn_iso_stream *cis;
 
+		cis = ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
+		ctx->node_ref.rx = &cis->node_rx_estab.rx;
+		LL_ASSERT_DBG(ctx->node_ref.rx->hdr.type == NODE_RX_TYPE_NONE);
+		/* Only the queued notification needs a link; dequeue releases it. */
+		ctx->node_ref.rx->hdr.link = ll_rx_link_alloc();
+		LL_ASSERT_DBG(ctx->node_ref.rx->hdr.link != NULL);
 		/* Mark node as RETAIN to trigger put/sched */
 		ctx->node_ref.rx->hdr.type = NODE_RX_TYPE_RETAIN;
 	}

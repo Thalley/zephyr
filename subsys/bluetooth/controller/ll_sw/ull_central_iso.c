@@ -212,6 +212,13 @@ uint8_t ll_cig_parameters_commit(uint8_t cig_id, uint16_t *handles)
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
 
+	handle_iter = UINT16_MAX;
+	while ((cis = ll_conn_iso_stream_get_by_group(cig, &handle_iter)) != NULL) {
+		if (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
+	}
+
 	/* Store currently configured number of CISes before cache transfer */
 	num_cis = cig->lll.num_cis;
 
@@ -718,6 +725,10 @@ uint8_t ll_cis_create_check(uint16_t cis_handle, uint16_t acl_handle)
 		cis = ll_conn_iso_stream_get(cis_handle);
 
 		if (cis->group && (cis->lll.handle == cis_handle)) {
+			if (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE) {
+				return BT_HCI_ERR_CMD_DISALLOWED;
+			}
+
 			if (cis->established) {
 				/* CIS is already created */
 				return BT_HCI_ERR_CONN_ALREADY_EXISTS;
@@ -734,17 +745,9 @@ static void cis_create_failed(struct ll_conn *conn, struct ll_conn_iso_stream *c
 			      void **node_rx_list)
 {
 	struct node_rx_conn_iso_estab *est;
-	struct node_rx_pdu *rx;
+	struct node_rx_pdu *rx = &cis->node_rx_estab.rx;
 
 	cis->lll.acl_handle = LLL_HANDLE_INVALID;
-
-	rx = ll_pdu_rx_alloc();
-	LL_ASSERT_ERR(rx != NULL);
-
-	/* Not going through memq, so release the link now
-	 * (same as ll_connect_disable() does for its node_rx).
-	 */
-	ll_rx_link_release(rx->hdr.link);
 
 	rx->hdr.type = NODE_RX_TYPE_CIS_ESTABLISHED;
 	rx->hdr.handle = conn->lll.handle;
@@ -843,6 +846,10 @@ uint8_t ll_cig_remove(uint8_t cig_id)
 		cis = ll_conn_iso_stream_get_by_group(cig, &handle_iter);
 		if (!cis) {
 			break;
+		}
+
+		if (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
 		}
 
 		conn = ll_connected_get(cis->lll.acl_handle);

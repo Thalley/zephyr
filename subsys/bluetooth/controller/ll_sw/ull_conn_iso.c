@@ -140,6 +140,10 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 		cis->node_rx_terminate.rx.hdr.link = ll_rx_link_alloc();
 		/* Link allocation should never fail */
 		LL_ASSERT_DBG(cis->node_rx_terminate.rx.hdr.link != NULL);
+
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+		cis->node_rx_estab.rx.hdr.type = NODE_RX_TYPE_NONE;
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 	}
 
 	return cis;
