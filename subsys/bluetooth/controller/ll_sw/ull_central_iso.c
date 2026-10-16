@@ -775,6 +775,7 @@ static void cis_create_failed(struct ll_conn *conn, struct ll_conn_iso_stream *c
 	est = (void *)rx->pdu;
 	est->cis_handle = cis->lll.handle;
 	est->status = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
+	est->central = true;
 
 	/* Prepend to caller's list; caller delivers after Command Status */
 	rx->hdr.next = *node_rx_list;

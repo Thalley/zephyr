@@ -151,8 +151,9 @@ void ll_rx_mem_release(void **node_rx)
 		{
 			struct node_rx_pdu *node = (void *)rx_free;
 			struct ll_conn_iso_stream *cis = node->rx_ftr.param;
+			struct node_rx_conn_iso_estab *est = (void *)node->pdu;
 
-			if ((cis != NULL) && (cis->estab_link != NULL)) {
+			if (est->central && (cis != NULL) && (cis->estab_link != NULL)) {
 				mem_release(cis->estab_link, &mem_link_rx.free);
 				cis->estab_link = NULL;
 			}

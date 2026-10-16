@@ -78,6 +78,7 @@ static void cc_ntf_established(struct ll_conn *conn, struct proc_ctx *ctx)
 
 	pdu->cis_handle = ctx->data.cis_create.cis_handle;
 	pdu->status = ctx->data.cis_create.error;
+	pdu->central = (conn->lll.role == BT_HCI_ROLE_CENTRAL);
 
 	if (!piggy_back) {
 		/* Enqueue notification towards LL */

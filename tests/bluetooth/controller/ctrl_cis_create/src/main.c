@@ -383,6 +383,8 @@ ZTEST(cis_create, test_cc_create_periph_rem_host_reject)
  */
 ZTEST(cis_create, test_cc_create_periph_rem_host_accept_to)
 {
+	struct ll_conn_iso_stream reused_cis = { .group = &cig_mock };
+	memq_link_t *reserved_link;
 	struct node_tx *tx;
 	struct node_rx_pdu *ntf;
 	struct node_rx_conn_iso_req cis_req = {
@@ -444,8 +446,14 @@ ZTEST(cis_create, test_cc_create_periph_rem_host_accept_to)
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	ut_rx_q_is_empty();
 
-	/* Release Ntf */
+	/* A delayed peripheral notification must not release a reused slot's reservation. */
+	reserved_link = ll_rx_link_alloc();
+	zassert_not_null(reserved_link);
+	reused_cis.estab_link = reserved_link;
+	ntf->rx_ftr.param = &reused_cis;
 	release_ntf(ntf);
+	zassert_equal_ptr(reused_cis.estab_link, reserved_link);
+	ll_rx_link_release(reserved_link);
 
 	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", llcp_ctx_buffers_free());

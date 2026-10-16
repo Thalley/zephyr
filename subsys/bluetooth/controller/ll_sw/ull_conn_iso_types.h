@@ -17,6 +17,7 @@ typedef void (*ll_iso_stream_released_cb_t)(struct ll_conn *conn);
 struct node_rx_conn_iso_estab {
 	uint16_t cis_handle;
 	uint8_t  status;
+	bool central;
 };
 
 struct ll_conn_iso_stream {

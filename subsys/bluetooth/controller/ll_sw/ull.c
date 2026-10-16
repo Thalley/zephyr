@@ -1702,8 +1702,9 @@ void ll_rx_mem_release(void **node_rx)
 		{
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 			struct ll_conn_iso_stream *cis = rx_free->rx_ftr.param;
+			struct node_rx_conn_iso_estab *est = (void *)rx_free->pdu;
 
-			if ((cis != NULL) && (cis->estab_link != NULL)) {
+			if (est->central && (cis != NULL) && (cis->estab_link != NULL)) {
 				ll_rx_link_release(cis->estab_link);
 				cis->estab_link = NULL;
 			}
