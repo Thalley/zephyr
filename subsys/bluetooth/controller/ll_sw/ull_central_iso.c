@@ -193,6 +193,13 @@ uint8_t ll_cig_parameters_commit(uint8_t cig_id, uint16_t *handles)
 
 	cig_created = false;
 
+	for (uint8_t i = 0U; i < ll_iso_setup.cis_count; i++) {
+		cis = ll_conn_iso_stream_get_by_id(ll_iso_setup.stream[i].cis_id);
+		if ((cis != NULL) && (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE)) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
+	}
+
 	/* If CIG already exists, this is a reconfigure */
 	cig = ll_conn_iso_group_get_by_id(cig_id);
 	if (!cig) {
