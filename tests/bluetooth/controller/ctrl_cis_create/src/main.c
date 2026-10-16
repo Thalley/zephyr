@@ -1184,7 +1184,6 @@ ZTEST(cis_create, test_cc_create_periph_rem_unexpected_pdu_awaiting_reply)
 ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 {
 	struct node_rx_conn_iso_estab cis_estab = {
-		.cis_handle = LL_CIS_HANDLE_BASE,
 		.status = BT_HCI_ERR_CONN_FAIL_TO_ESTAB,
 	};
 	struct pdu_data_llctrl_unknown_rsp unknown_rsp = {
@@ -1208,7 +1207,7 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 
 	/* Setup default CIS/CIG parameters */
 	cis = ll_conn_iso_stream_get(LL_CIS_HANDLE_BASE);
-	cis->lll.handle = LL_CIS_HANDLE_BASE;
+	cis_estab.cis_handle = cis->lll.handle;
 	cis->lll.acl_handle = conn.lll.handle;
 	cis->group->cig_id = local_cis_req.cig_id;
 	cis->cis_id = local_cis_req.cis_id;
