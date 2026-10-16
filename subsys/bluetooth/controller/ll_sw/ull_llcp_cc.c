@@ -842,10 +842,8 @@ void llcp_lp_cc_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_rx_pd
 		/* Invalid PDU received so terminate connection */
 		conn->llcp_terminate.reason_final = BT_HCI_ERR_LMP_PDU_NOT_ALLOWED;
 
-		/* Release any retained RX node before completing the procedure,
-		 * the node would otherwise be leaked
-		 */
-		llcp_rx_node_release(ctx);
+		/* Notify failure before completing so thread context releases the reservation. */
+		llcp_lp_cc_flush(conn, ctx);
 
 		llcp_lr_complete(conn);
 		ctx->state = LP_CC_STATE_IDLE;

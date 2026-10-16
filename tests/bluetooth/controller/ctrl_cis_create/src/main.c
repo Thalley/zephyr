@@ -1163,10 +1163,8 @@ ZTEST(cis_create, test_cc_create_periph_rem_unexpected_pdu_awaiting_reply)
  * retained RX node is consumed, an unexpected LL Control PDU is received.
  *
  * The unexpected PDU is routed to the active local procedure, which takes the
- * invalid PDU path and completes the procedure. The retained RX node must be
- * released, and the reference cleared, before the procedure is completed.
- * Otherwise the retained node reference is leaked and llcp_lr_check_done()
- * asserts.
+ * invalid PDU path and completes the procedure. The retained RX node must
+ * deliver the failure notification and release the reserved fallback link.
  *
  * +-----+                    +-------+                    +-----+
  * | UT  |                    | LL_C  |                    | LT  |
@@ -1185,10 +1183,15 @@ ZTEST(cis_create, test_cc_create_periph_rem_unexpected_pdu_awaiting_reply)
  */
 ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 {
+	struct node_rx_conn_iso_estab cis_estab = {
+		.cis_handle = LL_CIS_HANDLE_BASE,
+		.status = BT_HCI_ERR_CONN_FAIL_TO_ESTAB,
+	};
 	struct pdu_data_llctrl_unknown_rsp unknown_rsp = {
 		.type = PDU_DATA_LLCTRL_TYPE_CIS_REQ
 	};
 	struct ll_conn_iso_stream *cis;
+	struct node_rx_pdu *ntf;
 	struct node_tx *tx;
 	uint8_t err;
 
@@ -1205,6 +1208,7 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 
 	/* Setup default CIS/CIG parameters */
 	cis = ll_conn_iso_stream_get(LL_CIS_HANDLE_BASE);
+	cis->lll.handle = LL_CIS_HANDLE_BASE;
 	cis->lll.acl_handle = conn.lll.handle;
 	cis->group->cig_id = local_cis_req.cig_id;
 	cis->cis_id = local_cis_req.cis_id;
@@ -1225,6 +1229,8 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 	cis->lll.tx.ft = local_cis_req.c_ft;
 	cis->lll.rx.ft = local_cis_req.p_ft;
 
+	cis->estab_link = ll_rx_link_alloc();
+	zassert_not_null(cis->estab_link);
 	err = ull_cp_cis_create(&conn, cis);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
@@ -1255,6 +1261,11 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 	/* Termination 'triggered' */
 	zassert_equal(conn.llcp_terminate.reason_final, BT_HCI_ERR_LMP_PDU_NOT_ALLOWED,
 		      "Terminate reason %d", conn.llcp_terminate.reason_final);
+
+	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
+	release_ntf(ntf);
+	zassert_is_null(cis->estab_link);
+	ut_rx_q_is_empty();
 
 	/* Clear termination flag for subsequent test cycle */
 	conn.llcp_terminate.reason_final = 0;
