@@ -73,14 +73,14 @@ struct ll_conn_iso_stream {
 	/* Fallback node for a CIS Established event when the CIS Create procedure fails without
 	 * a notification node of its own. Separate from node_rx_terminate, which may be in use
 	 * for a cancelled CIS at the same time.
+	 * While unused (hdr.type is NODE_RX_TYPE_NONE), a non-NULL hdr.link is the RX link
+	 * reserved in thread context for the pending CIS Create procedure.
 	 */
 	struct {
 		struct node_rx_pdu rx;
 		/* Never used directly, but the memory needs to be reserved for it */
 		struct node_rx_conn_iso_estab estab;
 	} node_rx_estab;
-
-	memq_link_t *estab_link;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 };
 

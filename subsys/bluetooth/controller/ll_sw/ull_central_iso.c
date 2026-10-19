@@ -165,7 +165,7 @@ static bool cis_config_busy(struct ll_conn_iso_stream *cis)
 {
 	struct ll_conn *conn = ll_connected_get(cis->lll.acl_handle);
 
-	return (cis->estab_link != NULL) ||
+	return (cis->node_rx_estab.rx.hdr.link != NULL) ||
 	       (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE) ||
 	       (cis->node_rx_terminate.rx.hdr.type != NODE_RX_TYPE_NONE) ||
 	       ((conn != NULL) && ull_lp_cc_is_pending(conn, cis));
@@ -770,6 +770,7 @@ static void cis_create_failed(struct ll_conn *conn, struct ll_conn_iso_stream *c
 
 	cis->lll.acl_handle = LLL_HANDLE_INVALID;
 
+	LL_ASSERT_DBG(rx->hdr.link != NULL);
 	rx->hdr.type = NODE_RX_TYPE_CIS_ESTABLISHED;
 	rx->hdr.handle = conn->lll.handle;
 	rx->rx_ftr.param = cis;
@@ -778,6 +779,9 @@ static void cis_create_failed(struct ll_conn *conn, struct ll_conn_iso_stream *c
 	est->cis_handle = cis->lll.handle;
 	est->status = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
 	est->central = true;
+
+	/* hdr.next aliases hdr.link; release the reserved link before linking the node */
+	ll_rx_link_release(rx->hdr.link);
 
 	/* Prepend to caller's list; caller delivers after Command Status */
 	rx->hdr.next = *node_rx_list;
@@ -821,9 +825,9 @@ void ll_cis_create(uint16_t cis_handle, uint16_t acl_handle, void **node_rx_list
 	cis->lll.link_tx_free = NULL;
 
 	/* Reserve the fallback notification link before publishing the procedure. */
-	if (cis->estab_link == NULL) {
-		cis->estab_link = ll_rx_link_alloc();
-		LL_ASSERT_DBG(cis->estab_link != NULL);
+	if (cis->node_rx_estab.rx.hdr.link == NULL) {
+		cis->node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+		LL_ASSERT_DBG(cis->node_rx_estab.rx.hdr.link != NULL);
 	}
 
 	/* Initiate CIS Request Control Procedure */

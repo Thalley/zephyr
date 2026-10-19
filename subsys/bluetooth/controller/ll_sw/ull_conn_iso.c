@@ -145,7 +145,6 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 		cis->node_rx_terminate.rx.hdr.type = NODE_RX_TYPE_NONE;
 		cis->node_rx_estab.rx.hdr.link = NULL;
 		cis->node_rx_estab.rx.hdr.type = NODE_RX_TYPE_NONE;
-		cis->estab_link = NULL;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 	}
 
@@ -155,9 +154,11 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 void ll_conn_iso_stream_release(struct ll_conn_iso_stream *cis)
 {
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
-	if (cis->estab_link != NULL) {
-		ll_rx_link_release(cis->estab_link);
-		cis->estab_link = NULL;
+	if (cis->node_rx_estab.rx.hdr.type == NODE_RX_TYPE_NONE &&
+	    cis->node_rx_estab.rx.hdr.link != NULL) {
+		/* Free unused reserved link */
+		ll_rx_link_release(cis->node_rx_estab.rx.hdr.link);
+		cis->node_rx_estab.rx.hdr.link = NULL;
 	}
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 

@@ -1704,9 +1704,12 @@ void ll_rx_mem_release(void **node_rx)
 			struct ll_conn_iso_stream *cis = rx_free->rx_ftr.param;
 			struct node_rx_conn_iso_estab *est = (void *)rx_free->pdu;
 
-			if (est->central && (cis != NULL) && (cis->estab_link != NULL)) {
-				ll_rx_link_release(cis->estab_link);
-				cis->estab_link = NULL;
+			if (est->central && (cis != NULL) &&
+			    (cis->node_rx_estab.rx.hdr.type == NODE_RX_TYPE_NONE) &&
+			    (cis->node_rx_estab.rx.hdr.link != NULL)) {
+				/* Procedure used its own node; free the unused reserved link */
+				ll_rx_link_release(cis->node_rx_estab.rx.hdr.link);
+				cis->node_rx_estab.rx.hdr.link = NULL;
 			}
 
 			if ((cis != NULL) && (rx_free == &cis->node_rx_estab.rx)) {

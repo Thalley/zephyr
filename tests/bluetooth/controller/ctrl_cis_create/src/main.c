@@ -449,10 +449,10 @@ ZTEST(cis_create, test_cc_create_periph_rem_host_accept_to)
 	/* A delayed peripheral notification must not release a reused slot's reservation. */
 	reserved_link = ll_rx_link_alloc();
 	zassert_not_null(reserved_link);
-	reused_cis.estab_link = reserved_link;
+	reused_cis.node_rx_estab.rx.hdr.link = reserved_link;
 	ntf->rx_ftr.param = &reused_cis;
 	release_ntf(ntf);
-	zassert_equal_ptr(reused_cis.estab_link, reserved_link);
+	zassert_equal_ptr(reused_cis.node_rx_estab.rx.hdr.link, reserved_link);
 	ll_rx_link_release(reserved_link);
 
 	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt(),
@@ -1228,8 +1228,8 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 	cis->lll.tx.ft = local_cis_req.c_ft;
 	cis->lll.rx.ft = local_cis_req.p_ft;
 
-	cis->estab_link = ll_rx_link_alloc();
-	zassert_not_null(cis->estab_link);
+	cis->node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+	zassert_not_null(cis->node_rx_estab.rx.hdr.link);
 	err = ull_cp_cis_create(&conn, cis);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
@@ -1263,7 +1263,7 @@ ZTEST(cis_create, test_cc_create_central_unexpected_pdu_awaiting_rsp)
 
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	release_ntf(ntf);
-	zassert_is_null(cis->estab_link);
+	zassert_is_null(cis->node_rx_estab.rx.hdr.link);
 	ut_rx_q_is_empty();
 
 	/* Clear termination flag for subsequent test cycle */
@@ -1299,8 +1299,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	active_cis.lll.handle = LL_CIS_HANDLE_BASE;
 	active_cis.lll.acl_handle = conn.lll.handle;
-	active_cis.estab_link = ll_rx_link_alloc();
-	zassert_not_null(active_cis.estab_link);
+	active_cis.node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+	zassert_not_null(active_cis.node_rx_estab.rx.hdr.link);
 	zassert_equal(ull_cp_cis_create(&conn, &active_cis), BT_HCI_ERR_SUCCESS);
 	event_prepare(&conn);
 	event_done(&conn);
@@ -1312,8 +1312,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	queued_cis.lll.handle = LL_CIS_HANDLE_BASE + 1U;
 	queued_cis.lll.acl_handle = conn.lll.handle;
-	queued_cis.estab_link = ll_rx_link_alloc();
-	zassert_not_null(queued_cis.estab_link);
+	queued_cis.node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+	zassert_not_null(queued_cis.node_rx_estab.rx.hdr.link);
 	zassert_equal(ull_cp_cis_create(&conn, &queued_cis), BT_HCI_ERR_SUCCESS);
 	ctx = llcp_lr_peek_cc(&conn, queued_cis.lll.handle);
 	zassert_not_null(ctx);
@@ -1348,12 +1348,12 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	zassert_equal_ptr(ntf, retained);
 	release_ntf(ntf);
-	zassert_is_null(active_cis.estab_link);
+	zassert_is_null(active_cis.node_rx_estab.rx.hdr.link);
 
 	cis_estab.cis_handle = queued_cis.lll.handle;
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	zassert_equal_ptr(ntf, &queued_cis.node_rx_estab.rx);
-	zassert_is_null(queued_cis.estab_link);
+	zassert_is_null(queued_cis.node_rx_estab.rx.hdr.link);
 	release_ntf(ntf);
 	zassert_equal(queued_cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
 	ut_rx_q_is_empty();
@@ -1361,8 +1361,8 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	/* Reuse the same reserved node after its notification has been consumed. */
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
-	queued_cis.estab_link = ll_rx_link_alloc();
-	zassert_not_null(queued_cis.estab_link);
+	queued_cis.node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+	zassert_not_null(queued_cis.node_rx_estab.rx.hdr.link);
 	zassert_equal(ull_cp_cis_create(&conn, &queued_cis), BT_HCI_ERR_SUCCESS);
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
@@ -1407,8 +1407,8 @@ ZTEST(cis_create, test_cc_cancelled_queued_still_pending)
 	zassert_equal(ull_cp_version_exchange(&conn), BT_HCI_ERR_SUCCESS);
 	cis.lll.handle = LL_CIS_HANDLE_BASE;
 	cis.lll.acl_handle = conn.lll.handle;
-	cis.estab_link = ll_rx_link_alloc();
-	zassert_not_null(cis.estab_link);
+	cis.node_rx_estab.rx.hdr.link = ll_rx_link_alloc();
+	zassert_not_null(cis.node_rx_estab.rx.hdr.link);
 	zassert_equal(ull_cp_cis_create(&conn, &cis), BT_HCI_ERR_SUCCESS);
 	zassert_true(ull_lp_cc_is_pending(&conn, &cis));
 	zassert_true(ull_lp_cc_is_enqueued(&conn, &cis));
@@ -1424,7 +1424,7 @@ ZTEST(cis_create, test_cc_cancelled_queued_still_pending)
 
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
 	zassert_false(ull_lp_cc_is_pending(&conn, &cis));
-	zassert_is_null(cis.estab_link);
+	zassert_is_null(cis.node_rx_estab.rx.hdr.link);
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
 	zassert_equal_ptr(ntf, &cis.node_rx_estab.rx);
 	release_ntf(ntf);
