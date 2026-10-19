@@ -158,7 +158,7 @@ void ll_rx_mem_release(void **node_rx)
 				cis->estab_link = NULL;
 			}
 
-			if ((cis != NULL) && (node == &cis->node_rx_terminate.rx)) {
+			if ((cis != NULL) && (node == &cis->node_rx_estab.rx)) {
 				node->hdr.next = NULL;
 				node->hdr.type = NODE_RX_TYPE_NONE;
 				break;
@@ -211,7 +211,7 @@ void ll_rx_put(memq_link_t *link, void *rx)
 	struct ll_conn_iso_stream *cis = node->rx_ftr.param;
 
 	if ((node->hdr.type == NODE_RX_TYPE_CIS_ESTABLISHED) && (cis != NULL) &&
-	    (node == &cis->node_rx_terminate.rx)) {
+	    (node == &cis->node_rx_estab.rx)) {
 		zassert_not_null(link);
 		ll_rx_link_release(link);
 	}

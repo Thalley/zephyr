@@ -869,7 +869,7 @@ void llcp_lp_cc_flush(struct ll_conn *conn, struct proc_ctx *ctx)
 		struct ll_conn_iso_stream *cis;
 
 		cis = ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
-		ctx->node_ref.rx = &cis->node_rx_terminate.rx;
+		ctx->node_ref.rx = &cis->node_rx_estab.rx;
 		LL_ASSERT_DBG(ctx->node_ref.rx->hdr.type == NODE_RX_TYPE_NONE);
 		/* Transfer the thread-reserved link; dequeue releases it. */
 		ctx->node_ref.rx->hdr.link = cis->estab_link;

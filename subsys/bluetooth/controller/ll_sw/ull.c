@@ -1709,7 +1709,7 @@ void ll_rx_mem_release(void **node_rx)
 				cis->estab_link = NULL;
 			}
 
-			if ((cis != NULL) && (rx_free == &cis->node_rx_terminate.rx)) {
+			if ((cis != NULL) && (rx_free == &cis->node_rx_estab.rx)) {
 				rx_free->hdr.next = NULL;
 				rx_free->hdr.type = NODE_RX_TYPE_NONE;
 				break;

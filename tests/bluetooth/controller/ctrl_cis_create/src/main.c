@@ -1352,10 +1352,10 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 
 	cis_estab.cis_handle = queued_cis.lll.handle;
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
-	zassert_equal_ptr(ntf, &queued_cis.node_rx_terminate.rx);
+	zassert_equal_ptr(ntf, &queued_cis.node_rx_estab.rx);
 	zassert_is_null(queued_cis.estab_link);
 	release_ntf(ntf);
-	zassert_equal(queued_cis.node_rx_terminate.rx.hdr.type, NODE_RX_TYPE_NONE);
+	zassert_equal(queued_cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
 	ut_rx_q_is_empty();
 	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt());
 
@@ -1366,7 +1366,7 @@ ZTEST(cis_create, test_cc_create_central_disconnect_queued)
 	zassert_equal(ull_cp_cis_create(&conn, &queued_cis), BT_HCI_ERR_SUCCESS);
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
-	zassert_equal_ptr(ntf, &queued_cis.node_rx_terminate.rx);
+	zassert_equal_ptr(ntf, &queued_cis.node_rx_estab.rx);
 	release_ntf(ntf);
 	ut_rx_q_is_empty();
 	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt());
@@ -1391,12 +1391,17 @@ ZTEST(cis_create, test_cc_cancelled_queued_still_pending)
 		.status = BT_HCI_ERR_OP_CANCELLED_BY_HOST,
 	};
 	struct node_rx_pdu *ntf;
+	memq_link_t *terminate_link;
 
 	ll_conn_iso_stream_get_fake.return_val = &cis;
 	test_set_role(&conn, BT_HCI_ROLE_CENTRAL);
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 	conn.llcp.fex.valid = 1U;
 	conn.llcp.fex.features_peer |= BIT64(BT_LE_FEAT_BIT_CIS_PERIPHERAL);
+
+	terminate_link = ll_rx_link_alloc();
+	zassert_not_null(terminate_link);
+	cis.node_rx_terminate.rx.hdr.link = terminate_link;
 
 	/* Hold CIS Create behind a different procedure. */
 	zassert_equal(ull_cp_version_exchange(&conn), BT_HCI_ERR_SUCCESS);
@@ -1412,16 +1417,24 @@ ZTEST(cis_create, test_cc_cancelled_queued_still_pending)
 	zassert_false(ull_lp_cc_is_active(&conn));
 	zassert_false(ull_lp_cc_is_enqueued(&conn, &cis));
 	zassert_true(ull_lp_cc_is_pending(&conn, &cis));
-	zassert_equal(cis.node_rx_terminate.rx.hdr.type, NODE_RX_TYPE_NONE);
+	zassert_equal(cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
+
+	/* Termination node pending delivery, as enqueued by ll_terminate_ind_send() */
+	cis.node_rx_terminate.rx.hdr.type = NODE_RX_TYPE_TERMINATE;
 
 	ull_cp_state_set(&conn, ULL_CP_DISCONNECTED);
 	zassert_false(ull_lp_cc_is_pending(&conn, &cis));
 	zassert_is_null(cis.estab_link);
 	ut_rx_node(NODE_CIS_ESTABLISHED, &ntf, &cis_estab);
-	zassert_equal_ptr(ntf, &cis.node_rx_terminate.rx);
+	zassert_equal_ptr(ntf, &cis.node_rx_estab.rx);
 	release_ntf(ntf);
-	zassert_equal(cis.node_rx_terminate.rx.hdr.type, NODE_RX_TYPE_NONE);
+	zassert_equal(cis.node_rx_estab.rx.hdr.type, NODE_RX_TYPE_NONE);
 	ut_rx_q_is_empty();
+
+	/* The termination node and its link are left untouched */
+	zassert_equal(cis.node_rx_terminate.rx.hdr.type, NODE_RX_TYPE_TERMINATE);
+	zassert_equal_ptr(cis.node_rx_terminate.rx.hdr.link, terminate_link);
+	ll_rx_link_release(terminate_link);
 	zassert_equal(llcp_ctx_buffers_free(), test_ctx_buffers_cnt());
 }
 

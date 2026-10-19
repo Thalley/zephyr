@@ -166,6 +166,7 @@ static bool cis_config_busy(struct ll_conn_iso_stream *cis)
 	struct ll_conn *conn = ll_connected_get(cis->lll.acl_handle);
 
 	return (cis->estab_link != NULL) ||
+	       (cis->node_rx_estab.rx.hdr.type != NODE_RX_TYPE_NONE) ||
 	       (cis->node_rx_terminate.rx.hdr.type != NODE_RX_TYPE_NONE) ||
 	       ((conn != NULL) && ull_lp_cc_is_pending(conn, cis));
 }
@@ -765,7 +766,7 @@ static void cis_create_failed(struct ll_conn *conn, struct ll_conn_iso_stream *c
 			      void **node_rx_list)
 {
 	struct node_rx_conn_iso_estab *est;
-	struct node_rx_pdu *rx = &cis->node_rx_terminate.rx;
+	struct node_rx_pdu *rx = &cis->node_rx_estab.rx;
 
 	cis->lll.acl_handle = LLL_HANDLE_INVALID;
 

@@ -17,7 +17,7 @@ typedef void (*ll_iso_stream_released_cb_t)(struct ll_conn *conn);
 struct node_rx_conn_iso_estab {
 	uint16_t cis_handle;
 	uint8_t  status;
-	bool central;
+	bool     central;
 };
 
 struct ll_conn_iso_stream {
@@ -66,16 +66,20 @@ struct ll_conn_iso_stream {
 	struct {
 		struct node_rx_pdu rx;
 		/* Dummy declaration to ensure space allocated to hold one pdu byte */
-		union {
-			uint8_t dummy_reason;
-#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
-			/* Never used directly, but the memory needs to be reserved for it */
-			struct node_rx_conn_iso_estab estab;
-#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
-		};
+		uint8_t dummy_reason;
 	} node_rx_terminate;
 
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	/* Fallback node for a CIS Established event when the CIS Create procedure fails without
+	 * a notification node of its own. Separate from node_rx_terminate, which may be in use
+	 * for a cancelled CIS at the same time.
+	 */
+	struct {
+		struct node_rx_pdu rx;
+		/* Never used directly, but the memory needs to be reserved for it */
+		struct node_rx_conn_iso_estab estab;
+	} node_rx_estab;
+
 	memq_link_t *estab_link;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 };
