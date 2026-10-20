@@ -2,6 +2,7 @@ name: Copilot Setup Steps
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths: [.github/workflows/copilot-setup-steps.yml]
   pull_request:
     paths: [.github/workflows/copilot-setup-steps.yml]
@@ -74,11 +75,13 @@ jobs:
         run: |
           west init -l .
           west update --narrow -o=--depth=1
-          west zephyr-export
 
       - name: Install Python dependencies
         run: |
           west packages pip --install || pip install -r scripts/requirements.txt
+
+      - name: Export Zephyr CMake package
+        run: west zephyr-export
 
       # Getting Started: "Install the Zephyr SDK"
       - name: Read SDK version
