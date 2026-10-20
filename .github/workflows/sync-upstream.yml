@@ -1,0 +1,69 @@
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # daily at 03:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          # A PAT is required: GITHUB_TOKEN may not push commits that touch .github/workflows
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Fetch upstream
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/zephyrproject-rtos/zephyr.git
+          git fetch --no-tags upstream main
+          git fetch --no-tags origin main dev
+          echo "UPSTREAM_SHA=$(git rev-parse upstream/main)" >> "$GITHUB_ENV"
+
+      # main is a plain copy of upstream; only fast-forward it
+      - name: Update main
+        run: |
+          MAIN_SHA=$(git rev-parse origin/main)
+          if [ "$MAIN_SHA" = "$UPSTREAM_SHA" ]; then
+            echo "main is already up to date"
+          elif git merge-base --is-ancestor "$MAIN_SHA" "$UPSTREAM_SHA"; then
+            git push origin "$UPSTREAM_SHA:refs/heads/main"
+            echo "main fast-forwarded to $UPSTREAM_SHA"
+          else
+            echo "::error::main has commits that are not in upstream/main; not overwriting it"
+            git log --oneline "$UPSTREAM_SHA..$MAIN_SHA"
+            exit 1
+          fi
+
+      # dev = main + fork-only commits (Copilot setup, this workflow)
+      - name: Rebase dev onto main
+        run: |
+          DEV_SHA=$(git rev-parse origin/dev)
+          git checkout -B dev "$DEV_SHA"
+
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
+            echo "dev already contains upstream/main"
+            exit 0
+          fi
+
+          echo "Commits kept on top:"
+          git log --oneline "$UPSTREAM_SHA..HEAD"
+
+          if ! git rebase "$UPSTREAM_SHA"; then
+            echo "::error::Rebase conflict on dev; resolve manually"
+            git rebase --abort
+            exit 1
+          fi
+
+          git push --force-with-lease="dev:$DEV_SHA" origin HEAD:dev
