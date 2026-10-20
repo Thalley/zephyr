@@ -14,9 +14,6 @@ jobs:
     timeout-minutes: 59
     permissions:
       contents: read
-    env:
-      # Single source of truth for the SDK toolchains (used in cache key and install)
-      SDK_TOOLCHAINS: x86_64-zephyr-elf arm-zephyr-eabi
     steps:
       # Keep the repo at the workspace root; the Copilot agent expects it there.
       # The parent directory acts as the guide's ~/zephyrproject (west topdir).
@@ -49,6 +46,7 @@ jobs:
       - name: Set paths
         run: |
           TOPDIR="$(cd "$GITHUB_WORKSPACE/.." && pwd)"
+          echo "SDK_TOOLCHAINS=x86_64-zephyr-elf arm-zephyr-eabi" >> "$GITHUB_ENV"
           echo "ZEPHYR_TOPDIR=$TOPDIR" >> "$GITHUB_ENV"
           echo "VIRTUAL_ENV=$TOPDIR/.venv" >> "$GITHUB_ENV"
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
