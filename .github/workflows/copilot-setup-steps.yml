@@ -1,0 +1,53 @@
+name: Copilot Setup Steps
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+  pull_request:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 59
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build gperf ccache \
+            dfu-util device-tree-compiler gcc-multilib g++-multilib libsdl2-dev libmagic1
+
+      # Installs the SDK (cached), Python deps, and runs west init/update (cached)
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          base-path: ..
+          app-path: zephyr
+          toolchains: x86_64-zephyr-elf:arm-zephyr-eabi
+
+      - name: Cache BabbleSim
+        id: bsim-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bsim
+          key: bsim-${{ hashFiles('west.yml') }}
+
+      - name: Build BabbleSim
+        if: steps.bsim-cache.outputs.cache-hit != 'true'
+        run: |
+          # BabbleSim is fetched as west modules when enabled in the manifest group filter
+          west config manifest.group-filter -- +babblesim
+          west update
+          # build/copy into ~/bsim here
+          cp -a "$(west topdir)/tools/bsim" "$HOME/bsim"
+          BSIM_BUILD_FAIL_ASAP=1 make -C "$HOME/bsim" everything -j 8
+
+      - name: Export env for the agent
+        run: |
+          echo "BSIM_OUT_PATH=$HOME/bsim" >> $GITHUB_ENV
+          echo "BSIM_COMPONENTS_PATH=$HOME/bsim/components" >> $GITHUB_ENV
