@@ -1083,7 +1083,8 @@ static void test_change_microphone_gain(void)
 	LOG_INF("Microphone gain changed");
 }
 
-static void test_broadcast_reception_start(struct bt_conn *conns[], size_t conn_cnt)
+static void test_broadcast_reception_start(struct bt_conn *conns[], size_t conn_cnt,
+					   bool encryption)
 {
 	struct bt_cap_commander_broadcast_reception_start_param reception_start_param = {0};
 	struct bt_cap_commander_broadcast_reception_start_member_param param[CONFIG_BT_MAX_CONN] = {
@@ -1093,6 +1094,11 @@ static void test_broadcast_reception_start(struct bt_conn *conns[], size_t conn_
 	reception_start_param.type = BT_CAP_SET_TYPE_AD_HOC;
 	reception_start_param.count = conn_cnt;
 	reception_start_param.param = param;
+	reception_start_param.encryption = encryption;
+	if (encryption) {
+		(void)memcpy(reception_start_param.broadcast_code, BROADCAST_CODE,
+			     sizeof(reception_start_param.broadcast_code));
+	}
 
 	for (size_t i = 0U; i < conn_cnt; i++) {
 		uint32_t bis_sync[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS];
@@ -1241,7 +1247,7 @@ static void test_main_cap_commander_capture_and_render(void)
 	PASS("CAP commander capture and rendering passed\n");
 }
 
-static void test_main_cap_commander_broadcast_reception(void)
+static void test_cap_commander_broadcast_reception(bool encryption)
 {
 	size_t acceptor_count;
 
@@ -1269,11 +1275,19 @@ static void test_main_cap_commander_broadcast_reception(void)
 
 	pa_sync_to_broadcaster();
 
-	test_broadcast_reception_start(connected_conns, connected_conn_cnt);
+	test_broadcast_reception_start(connected_conns, connected_conn_cnt, encryption);
 	WAIT_FOR_FLAG(flag_broadcast_reception_started);
 
-	test_distribute_broadcast_code(connected_conns, connected_conn_cnt);
-	WAIT_FOR_FLAG(flag_broadcast_code_distributed);
+	if (encryption) {
+		/* The broadcast code is distributed as part of the reception start procedure */
+		if (TEST_FLAG(flag_broadcast_code_distributed)) {
+			FAIL("Unexpected distribute broadcast code procedure\n");
+			return;
+		}
+	} else {
+		test_distribute_broadcast_code(connected_conns, connected_conn_cnt);
+		WAIT_FOR_FLAG(flag_broadcast_code_distributed);
+	}
 
 	for (size_t i = 0U; i < connected_conn_cnt; i++) {
 		backchannel_sync_wait_any(); /* wait for the acceptor to receive data */
@@ -1288,8 +1302,20 @@ static void test_main_cap_commander_broadcast_reception(void)
 	backchannel_sync_send_all(); /* let others know we have received what we wanted */
 
 	deinit();
+}
+
+static void test_main_cap_commander_broadcast_reception(void)
+{
+	test_cap_commander_broadcast_reception(false);
 
 	PASS("Broadcast reception passed\n");
+}
+
+static void test_main_cap_commander_broadcast_reception_encrypted(void)
+{
+	test_cap_commander_broadcast_reception(true);
+
+	PASS("Broadcast reception encrypted passed\n");
 }
 
 static void test_main_cap_commander_broadcast_reception_error(void)
@@ -1322,7 +1348,7 @@ static void test_main_cap_commander_broadcast_reception_error(void)
 	for (size_t i = 0U; i < connected_conn_cnt; i++) {
 		LOG_INF("Attempting reception start on %zu connections, expecting failure on #%zu",
 		       connected_conn_cnt, i + 1);
-		test_broadcast_reception_start(connected_conns, connected_conn_cnt);
+		test_broadcast_reception_start(connected_conns, connected_conn_cnt, false);
 		WAIT_FOR_AND_CLEAR_FLAG(flag_broadcast_reception_start_failed);
 		if (TEST_FLAG(flag_broadcast_reception_started)) {
 			FAIL("Expected reception start to fail\n");
@@ -1346,7 +1372,7 @@ static void test_main_cap_commander_broadcast_reception_error(void)
 	/* Expect success */
 	LOG_INF("Attempting reception start on %zu connections, expecting success",
 	       connected_conn_cnt);
-	test_broadcast_reception_start(connected_conns, connected_conn_cnt);
+	test_broadcast_reception_start(connected_conns, connected_conn_cnt, false);
 	WAIT_FOR_FLAG(flag_broadcast_reception_started);
 
 	/* Expect success
@@ -1453,7 +1479,7 @@ static void test_main_cap_commander_disconnect(void)
 	pa_sync_to_broadcaster();
 
 	LOG_INF("Attempting reception start on %zu connections", connected_conn_cnt);
-	test_broadcast_reception_start(connected_conns, connected_conn_cnt);
+	test_broadcast_reception_start(connected_conns, connected_conn_cnt, false);
 	WAIT_FOR_FLAG(flag_broadcast_reception_start_failed);
 
 	backchannel_sync_send_all(); /* let others know we have received what we wanted */
@@ -1475,6 +1501,12 @@ static const struct bst_test_instance test_cap_commander[] = {
 		.test_post_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = test_main_cap_commander_broadcast_reception,
+	},
+	{
+		.test_id = "cap_commander_broadcast_reception_encrypted",
+		.test_post_init_f = test_init,
+		.test_tick_f = test_tick,
+		.test_main_f = test_main_cap_commander_broadcast_reception_encrypted,
 	},
 	{
 		.test_id = "cap_commander_broadcast_reception_error",

@@ -356,7 +356,8 @@ static void test_broadcast_audio_create_inval(void)
 	 */
 }
 
-static void test_broadcast_audio_create(struct bt_cap_broadcast_source **broadcast_source)
+static void test_broadcast_audio_create(struct bt_cap_broadcast_source **broadcast_source,
+					bool encryption)
 {
 	uint8_t bis_codec_data[] = {3, BT_AUDIO_CODEC_CFG_FREQ,
 				    BT_BYTES_LIST_LE16(BT_AUDIO_CODEC_CFG_FREQ_16KHZ)};
@@ -381,10 +382,14 @@ static void test_broadcast_audio_create(struct bt_cap_broadcast_source **broadca
 	create_param.subgroup_params = &subgroup_param;
 	create_param.qos = &broadcast_preset_16_2_1.qos;
 	create_param.packing = BT_ISO_PACKING_SEQUENTIAL;
-	create_param.encryption = false;
+	create_param.encryption = encryption;
+	if (encryption) {
+		(void)memcpy(create_param.broadcast_code, BROADCAST_CODE,
+			     sizeof(create_param.broadcast_code));
+	}
 
-	LOG_INF("Creating broadcast source with %zu broadcast_streams",
-	       ARRAY_SIZE(broadcast_streams));
+	LOG_INF("Creating %sbroadcast source with %zu broadcast_streams",
+		encryption ? "encrypted " : "", ARRAY_SIZE(broadcast_streams));
 
 	err = bt_cap_initiator_broadcast_audio_create(&create_param, broadcast_source);
 	if (err != 0) {
@@ -613,7 +618,7 @@ static void test_broadcast_audio_delete(struct bt_cap_broadcast_source *broadcas
 	}
 }
 
-static void test_main_cap_initiator_broadcast(void)
+static void test_cap_initiator_broadcast_common(bool encryption)
 {
 	struct bt_cap_broadcast_source *broadcast_source;
 	struct bt_le_ext_adv *adv;
@@ -624,7 +629,7 @@ static void test_main_cap_initiator_broadcast(void)
 
 	setup_broadcast_adv(&adv);
 
-	test_broadcast_audio_create(&broadcast_source);
+	test_broadcast_audio_create(&broadcast_source, encryption);
 
 	test_broadcast_audio_start(broadcast_source, adv);
 
@@ -655,8 +660,20 @@ static void test_main_cap_initiator_broadcast(void)
 
 	stop_and_delete_extended_adv(adv);
 	adv = NULL;
+}
+
+static void test_main_cap_initiator_broadcast(void)
+{
+	test_cap_initiator_broadcast_common(false);
 
 	PASS("CAP initiator broadcast passed\n");
+}
+
+static void test_main_cap_initiator_broadcast_encrypted(void)
+{
+	test_cap_initiator_broadcast_common(true);
+
+	PASS("CAP initiator broadcast encrypted passed\n");
 }
 
 static void test_main_cap_initiator_broadcast_inval(void)
@@ -671,7 +688,7 @@ static void test_main_cap_initiator_broadcast_inval(void)
 	setup_broadcast_adv(&adv);
 
 	test_broadcast_audio_create_inval();
-	test_broadcast_audio_create(&broadcast_source);
+	test_broadcast_audio_create(&broadcast_source, false);
 
 	test_broadcast_audio_start_inval(broadcast_source, adv);
 	test_broadcast_audio_start(broadcast_source, adv);
@@ -720,7 +737,7 @@ static void test_main_cap_initiator_broadcast_update(void)
 
 	setup_broadcast_adv(&adv);
 
-	test_broadcast_audio_create(&broadcast_source);
+	test_broadcast_audio_create(&broadcast_source, false);
 
 	test_broadcast_audio_start(broadcast_source, adv);
 
@@ -918,6 +935,12 @@ static const struct bst_test_instance test_cap_initiator_broadcast[] = {
 		.test_pre_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = test_main_cap_initiator_broadcast,
+	},
+	{
+		.test_id = "cap_initiator_broadcast_encrypted",
+		.test_pre_init_f = test_init,
+		.test_tick_f = test_tick,
+		.test_main_f = test_main_cap_initiator_broadcast_encrypted,
 	},
 	{
 		.test_id = "cap_initiator_broadcast_inval",

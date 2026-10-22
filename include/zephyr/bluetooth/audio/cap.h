@@ -1021,6 +1021,9 @@ struct bt_cap_handover_unicast_to_broadcast_param {
 	 * @brief Broadcast source parameters.
 	 *
 	 * These parameters shall remain valid until the procedure has completed.
+	 *
+	 * If @p broadcast_create_param.encryption is true, the broadcast code is distributed to
+	 * the acceptors as part of the procedure.
 	 */
 	struct bt_cap_initiator_broadcast_create_param *broadcast_create_param;
 };
@@ -1434,11 +1437,38 @@ struct bt_cap_commander_broadcast_reception_start_param {
 
 	/** The number of parameters in @p param */
 	size_t count;
+
+	/**
+	 * @brief Whether the broadcast source is encrypted.
+	 *
+	 * If true, @p broadcast_code is sent to each Common Audio Profile Acceptor that requests
+	 * it as part of the procedure.
+	 */
+	bool encryption;
+
+	/**
+	 * @brief 16-octet broadcast code.
+	 *
+	 * Only valid if @p encryption is true.
+	 *
+	 * If the value is a string or a the value is less than 16 octets,
+	 * the remaining octets shall be 0.
+	 *
+	 * Example:
+	 *   The string "Broadcast Code" shall be
+	 *   [42 72 6F 61 64 63 61 73 74 20 43 6F 64 65 00 00]
+	 */
+	uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE];
 };
 
 /**
  * @brief Starts the reception of broadcast audio on one or more remote Common Audio Profile
  * Acceptors
+ *
+ * If @p param.encryption is true, the broadcast code is distributed to each Common Audio Profile
+ * Acceptor that requests it, and the procedure completes once all Common Audio Profile Acceptors
+ * have synchronized to the BIG. bt_cap_commander_distribute_broadcast_code() does not need to be
+ * called afterwards in this case.
  *
  * @param param The parameters to start the broadcast audio
  *
