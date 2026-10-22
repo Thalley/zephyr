@@ -27,6 +27,7 @@
 #include <zephyr/ztest_assert.h>
 #include <zephyr/ztest_test.h>
 
+#include "bap_broadcast_assistant.h"
 #include "cap_commander.h"
 #include "conn.h"
 #include "expects_util.h"
@@ -56,6 +57,9 @@ struct cap_commander_test_broadcast_reception_fixture {
 
 /* src_id can not be part of the fixture since it is accessed in the callback function */
 static uint8_t src_id[CONFIG_BT_MAX_CONN];
+/* Number of successful set broadcast code operations reported to the broadcast assistant callback
+ */
+static size_t broadcast_code_cnt;
 
 static void test_start_param_init(void *f);
 static void test_stop_param_init(void *f);
@@ -69,6 +73,15 @@ static void cap_commander_broadcast_assistant_recv_state_cb(
 
 	index = bt_conn_index(conn);
 	src_id[index] = state->src_id;
+}
+
+static void cap_commander_broadcast_assistant_broadcast_code_cb(struct bt_conn *conn, int err)
+{
+	ARG_UNUSED(conn);
+
+	if (err == 0) {
+		broadcast_code_cnt++;
+	}
 }
 
 static void cap_commander_test_broadcast_reception_fixture_init(
@@ -85,6 +98,9 @@ static void cap_commander_test_broadcast_reception_fixture_init(
 
 	fixture->broadcast_assistant_cb.recv_state =
 		cap_commander_broadcast_assistant_recv_state_cb;
+	fixture->broadcast_assistant_cb.broadcast_code =
+		cap_commander_broadcast_assistant_broadcast_code_cb;
+	broadcast_code_cnt = 0U;
 	err = bt_bap_broadcast_assistant_register_cb(&fixture->broadcast_assistant_cb);
 	zassert_equal(0, err, "Failed registering broadcast assistant callback functions %d", err);
 }
@@ -126,6 +142,8 @@ static void cap_commander_test_broadcast_reception_after(void *f)
 	/* We need to cleanup since the CAP commander remembers state */
 	err = bt_cap_commander_cancel();
 	zassert_true(err == 0 || err == -EALREADY, "Unexpected error: %d", err);
+
+	set_add_src_encrypted(false);
 
 	for (size_t i = 0U; i < ARRAY_SIZE(fixture->conns); i++) {
 		mock_bt_conn_disconnected(&fixture->conns[i], BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -243,6 +261,65 @@ ZTEST_F(cap_commander_test_broadcast_reception, test_commander_reception_start_o
 	}
 
 	test_broadcast_reception_start(&fixture->start_param);
+}
+
+ZTEST_F(cap_commander_test_broadcast_reception, test_commander_reception_start_encrypted)
+{
+	int err;
+
+	err = bt_cap_commander_register_cb(&mock_cap_commander_cb);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	set_add_src_encrypted(true);
+	fixture->start_param.encryption = true;
+	memcpy(fixture->start_param.broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
+
+	test_broadcast_reception_start(&fixture->start_param);
+
+	zassert_equal(ARRAY_SIZE(fixture->conns), broadcast_code_cnt,
+		      "Unexpected number of broadcast codes set: %zu", broadcast_code_cnt);
+	zexpect_call_count("bt_cap_commander_cb.distribute_broadcast_code", 0,
+			   mock_cap_commander_distribute_broadcast_code_cb_fake.call_count);
+}
+
+ZTEST_F(cap_commander_test_broadcast_reception,
+	test_commander_reception_start_encryption_not_requested)
+{
+	int err;
+
+	err = bt_cap_commander_register_cb(&mock_cap_commander_cb);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	/* The broadcast code is only sent if requested by the acceptor */
+	fixture->start_param.encryption = true;
+	memcpy(fixture->start_param.broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
+
+	test_broadcast_reception_start(&fixture->start_param);
+
+	zassert_equal(0U, broadcast_code_cnt, "Unexpected number of broadcast codes set: %zu",
+		      broadcast_code_cnt);
+}
+
+ZTEST_F(cap_commander_test_broadcast_reception,
+	test_commander_reception_start_encrypted_no_broadcast_code)
+{
+	int err;
+
+	err = bt_cap_commander_register_cb(&mock_cap_commander_cb);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	/* Without a broadcast code the acceptors never sync to the BIG, so the procedure does not
+	 * complete
+	 */
+	set_add_src_encrypted(true);
+
+	err = bt_cap_commander_broadcast_reception_start(&fixture->start_param);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 0,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+	zassert_equal(0U, broadcast_code_cnt, "Unexpected number of broadcast codes set: %zu",
+		      broadcast_code_cnt);
 }
 
 ZTEST_F(cap_commander_test_broadcast_reception, test_commander_reception_start_double)

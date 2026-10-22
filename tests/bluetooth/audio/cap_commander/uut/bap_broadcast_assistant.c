@@ -37,6 +37,16 @@ void set_skip_add_src(unsigned int setting)
 	add_src_skip = setting;
 }
 
+/* When true, added sources request a broadcast code and are not BIS synced until the broadcast
+ * code has been set
+ */
+static bool add_src_encrypted;
+
+void set_add_src_encrypted(bool encrypted)
+{
+	add_src_encrypted = encrypted;
+}
+
 struct bap_broadcast_assistant_recv_state_info {
 	uint8_t src_id;
 	/** Cached PAST available */
@@ -54,6 +64,7 @@ struct bap_broadcast_assistant_instance {
 	 * to easily check pa_sync and bis_sync states
 	 */
 	enum bt_bap_pa_state pa_sync_state;
+	bool broadcast_code_requested;
 	uint8_t num_subgroups;
 	struct bt_bap_bass_subgroup subgroups[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS];
 };
@@ -108,7 +119,7 @@ int bt_bap_broadcast_assistant_add_src(struct bt_conn *conn,
 				       const struct bt_bap_broadcast_assistant_add_src_param *param)
 {
 	struct bap_broadcast_assistant_instance *inst;
-	struct bt_bap_scan_delegator_recv_state state;
+	struct bt_bap_scan_delegator_recv_state state = {0};
 	struct bt_bap_broadcast_assistant_cb *listener, *next;
 
 	if (add_src_skip != 0) {
@@ -134,9 +145,14 @@ int bt_bap_broadcast_assistant_add_src(struct bt_conn *conn,
 		param->pa_sync ? BT_BAP_PA_STATE_SYNCED : BT_BAP_PA_STATE_NOT_SYNCED;
 	state.num_subgroups = inst->num_subgroups = param->num_subgroups;
 
+	inst->broadcast_code_requested = add_src_encrypted;
+	state.encrypt_state = add_src_encrypted ? BT_BAP_BIG_ENC_STATE_BCODE_REQ
+						: BT_BAP_BIG_ENC_STATE_NO_ENC;
+
 	for (size_t i = 0U; i < param->num_subgroups; i++) {
-		state.subgroups[i].bis_sync = inst->subgroups[i].bis_sync =
-			param->subgroups[i].bis_sync;
+		inst->subgroups[i].bis_sync = param->subgroups[i].bis_sync;
+		/* Encrypted sources are not BIS synced until the broadcast code has been set */
+		state.subgroups[i].bis_sync = add_src_encrypted ? 0U : param->subgroups[i].bis_sync;
 	}
 
 	bt_addr_le_copy(&inst->recv_states.addr, &param->addr);
@@ -221,11 +237,19 @@ int bt_bap_broadcast_assistant_set_broadcast_code(
 	const uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE])
 {
 	struct bt_bap_broadcast_assistant_cb *listener, *next;
+	struct bap_broadcast_assistant_instance *inst;
+	struct bt_bap_scan_delegator_recv_state state = {0};
 	int err;
 
 	zassert_not_null(conn, "conn is NULL");
 
-	zassert_equal(src_id, RANDOM_SRC_ID, "Invalid src_id");
+	inst = inst_by_conn(conn);
+
+	if (inst->broadcast_code_requested) {
+		zassert_equal(src_id, inst->recv_states.src_id, "Invalid src_id");
+	} else {
+		zassert_equal(src_id, RANDOM_SRC_ID, "Invalid src_id");
+	}
 
 	err = strncmp((const char *)broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
 	zassert_equal(0, err, "Unexpected broadcast code");
@@ -233,6 +257,28 @@ int bt_bap_broadcast_assistant_set_broadcast_code(
 	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
 		if (listener->broadcast_code != NULL) {
 			listener->broadcast_code(conn, 0);
+		}
+	}
+
+	if (inst->broadcast_code_requested) {
+		/* Now that the broadcast code has been set, the source can be BIS synced */
+		inst->broadcast_code_requested = false;
+
+		state.src_id = inst->recv_states.src_id;
+		state.adv_sid = inst->recv_states.adv_sid;
+		state.broadcast_id = inst->recv_states.broadcast_id;
+		bt_addr_le_copy(&state.addr, &inst->recv_states.addr);
+		state.pa_sync_state = inst->pa_sync_state;
+		state.encrypt_state = BT_BAP_BIG_ENC_STATE_DEC;
+		state.num_subgroups = inst->num_subgroups;
+		for (size_t i = 0U; i < inst->num_subgroups; i++) {
+			state.subgroups[i].bis_sync = inst->subgroups[i].bis_sync;
+		}
+
+		SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
+			if (listener->recv_state != NULL) {
+				listener->recv_state(conn, 0, &state);
+			}
 		}
 	}
 
