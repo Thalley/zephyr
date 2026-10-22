@@ -265,8 +265,18 @@ static void notify_work_handler(struct k_work *work)
 {
 	struct k_work_delayable *d_work = k_work_delayable_from_work(work);
 	struct bt_aics *inst = CONTAINER_OF(d_work, struct bt_aics, srv.notify_work);
+	int err;
 
-	aics_lock();
+	err = k_mutex_lock(&aics_mutex, K_NO_WAIT);
+	if (err != 0) {
+		LOG_DBG("Mutex lock failed (%d), rescheduling", err);
+		err = k_work_reschedule(d_work, K_USEC(BT_AUDIO_NOTIFY_RETRY_DELAY_US));
+		if (err < 0) {
+			LOG_ERR("Failed to reschedule notification err %d", err);
+		}
+
+		return;
+	}
 
 	if (atomic_test_and_clear_bit(inst->srv.notify, AICS_NOTIFY_STATE)) {
 		notify(inst, AICS_NOTIFY_STATE, BT_UUID_AICS_STATE, &inst->srv.state,
@@ -551,9 +561,6 @@ static int aics_local_control_write(struct bt_aics *inst, struct bt_aics_gain_co
 	ssize_t ret;
 
 	aics_lock();
-	/* Read the change counter with the lock held so that it cannot be
-	 * changed by a remote write before the operation is applied
-	 */
 	cp->cp.counter = inst->srv.state.change_counter;
 	ret = aics_control_write(inst, cp, len, 0U);
 	aics_unlock();
@@ -734,7 +741,8 @@ struct bt_aics *bt_aics_free_instance_get(void)
 	aics_lock();
 
 	if (instance_cnt < CONFIG_BT_AICS_MAX_INSTANCE_COUNT) {
-		inst = &aics_insts[instance_cnt++];
+		inst = &aics_insts[instance_cnt];
+		instance_cnt++;
 	}
 
 	aics_unlock();
