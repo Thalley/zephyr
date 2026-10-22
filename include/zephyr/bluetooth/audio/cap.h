@@ -1021,6 +1021,9 @@ struct bt_cap_handover_unicast_to_broadcast_param {
 	 * @brief Broadcast source parameters.
 	 *
 	 * These parameters shall remain valid until the procedure has completed.
+	 *
+	 * If @p broadcast_create_param.encryption is true, the broadcast code is distributed to
+	 * the acceptors as part of the procedure.
 	 */
 	struct bt_cap_initiator_broadcast_create_param *broadcast_create_param;
 };

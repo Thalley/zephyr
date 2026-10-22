@@ -275,6 +275,11 @@ void bt_cap_handover_unicast_to_broadcast_reception_start(void)
 	create_param = proc_param->unicast_to_broadcast.broadcast_create_param;
 	param.type = proc_param->unicast_to_broadcast.type;
 	param.param = proc_param->unicast_to_broadcast.reception_start_member_params;
+	param.encryption = create_param->encryption;
+	if (param.encryption) {
+		(void)memcpy(param.broadcast_code, create_param->broadcast_code,
+			     sizeof(param.broadcast_code));
+	}
 
 	err = bt_le_ext_adv_get_info(proc_param->unicast_to_broadcast.ext_adv, &adv_info);
 	__ASSERT_NO_MSG(err != -EINVAL);
