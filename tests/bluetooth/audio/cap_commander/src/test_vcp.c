@@ -7,7 +7,6 @@
  */
 #include <errno.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -41,12 +40,9 @@ static void cap_commander_test_vcp_fixture_init(struct cap_commander_test_vcp_fi
 
 static void *cap_commander_test_vcp_setup(void)
 {
-	struct cap_commander_test_vcp_fixture *fixture;
+	static struct cap_commander_test_vcp_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_vcp_before(void *f)
@@ -68,14 +64,8 @@ static void cap_commander_test_vcp_after(void *f)
 	}
 }
 
-static void cap_commander_test_vcp_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_commander_test_vcp, NULL, cap_commander_test_vcp_setup,
-	    cap_commander_test_vcp_before, cap_commander_test_vcp_after,
-	    cap_commander_test_vcp_teardown);
+	    cap_commander_test_vcp_before, cap_commander_test_vcp_after, NULL);
 
 ZTEST_F(cap_commander_test_vcp, test_commander_change_volume)
 {

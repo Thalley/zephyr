@@ -8,7 +8,6 @@
 
 #include <errno.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -56,12 +55,9 @@ static void cap_initiator_test_suite_fixture_init(struct cap_initiator_test_suit
 
 static void *cap_initiator_test_suite_setup(void)
 {
-	struct cap_initiator_test_suite_fixture *fixture;
+	static struct cap_initiator_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_initiator_test_suite_before(void *f)
@@ -83,14 +79,8 @@ static void cap_initiator_test_suite_after(void *f)
 	}
 }
 
-static void cap_initiator_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_initiator_test_suite, NULL, cap_initiator_test_suite_setup,
-	    cap_initiator_test_suite_before, cap_initiator_test_suite_after,
-	    cap_initiator_test_suite_teardown);
+	    cap_initiator_test_suite_before, cap_initiator_test_suite_after, NULL);
 
 ZTEST_F(cap_initiator_test_suite, test_initiator_register_cb)
 {

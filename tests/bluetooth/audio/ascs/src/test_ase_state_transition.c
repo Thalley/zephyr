@@ -10,7 +10,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/assigned_numbers.h>
@@ -60,12 +59,9 @@ struct test_ase_state_transition_fixture {
 
 static void *test_sink_ase_state_transition_setup(void)
 {
-	struct test_ase_state_transition_fixture *fixture;
+	static struct test_ase_state_transition_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void test_ase_snk_state_transition_before(void *f)
@@ -130,14 +126,8 @@ static void test_ase_state_transition_after(void *f)
 	zassert_equal(err, 0, "Unexpected err response %d", err);
 }
 
-static void test_ase_state_transition_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(test_sink_ase_state_transition, NULL, test_sink_ase_state_transition_setup,
-	    test_ase_snk_state_transition_before, test_ase_state_transition_after,
-	    test_ase_state_transition_teardown);
+	    test_ase_snk_state_transition_before, test_ase_state_transition_after, NULL);
 
 ZTEST_F(test_sink_ase_state_transition, test_client_idle_to_codec_configured)
 {
@@ -704,17 +694,13 @@ ZTEST_F(test_sink_ase_state_transition, test_server_streaming_to_releasing)
 
 static void *test_source_ase_state_transition_setup(void)
 {
-	struct test_ase_state_transition_fixture *fixture;
+	static struct test_ase_state_transition_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 ZTEST_SUITE(test_source_ase_state_transition, NULL, test_source_ase_state_transition_setup,
-	    test_ase_src_state_transition_before, test_ase_state_transition_after,
-	    test_ase_state_transition_teardown);
+	    test_ase_src_state_transition_before, test_ase_state_transition_after, NULL);
 
 ZTEST_F(test_source_ase_state_transition, test_client_idle_to_codec_configured)
 {

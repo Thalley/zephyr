@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -82,12 +81,9 @@ cap_commander_test_cancel_fixture_init(struct cap_commander_test_cancel_fixture 
 
 static void *cap_commander_test_cancel_setup(void)
 {
-	struct cap_commander_test_cancel_fixture *fixture;
+	static struct cap_commander_test_cancel_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_cancel_before(void *f)
@@ -111,11 +107,6 @@ static void cap_commander_test_cancel_after(void *f)
 	}
 }
 
-static void cap_commander_test_cancel_teardown(void *f)
-{
-	free(f);
-}
-
 static void test_cancel(void)
 {
 	int err;
@@ -130,8 +121,7 @@ static void test_cancel(void)
 }
 
 ZTEST_SUITE(cap_commander_test_cancel, NULL, cap_commander_test_cancel_setup,
-	    cap_commander_test_cancel_before, cap_commander_test_cancel_after,
-	    cap_commander_test_cancel_teardown);
+	    cap_commander_test_cancel_before, cap_commander_test_cancel_after, NULL);
 
 ZTEST_F(cap_commander_test_cancel, test_commander_cancel)
 {

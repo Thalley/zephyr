@@ -7,7 +7,6 @@
  */
 
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -127,12 +126,9 @@ static void bearer_uri_schemes_cb(struct bt_ccp_call_control_client_bearer *bear
 
 static void *ccp_call_control_client_procedures_test_suite_setup(void)
 {
-	struct ccp_call_control_client_procedures_test_suite_fixture *fixture;
+	static struct ccp_call_control_client_procedures_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void ccp_call_control_client_procedures_test_suite_before(void *f)
@@ -167,16 +163,10 @@ static void ccp_call_control_client_procedures_test_suite_after(void *f)
 	mock_bt_conn_disconnected(&fixture->conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 }
 
-static void ccp_call_control_client_procedures_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(ccp_call_control_client_procedures_test_suite, NULL,
 	    ccp_call_control_client_procedures_test_suite_setup,
 	    ccp_call_control_client_procedures_test_suite_before,
-	    ccp_call_control_client_procedures_test_suite_after,
-	    ccp_call_control_client_procedures_test_suite_teardown);
+	    ccp_call_control_client_procedures_test_suite_after, NULL);
 
 static ZTEST_F(ccp_call_control_client_procedures_test_suite,
 	       test_ccp_call_control_client_read_bearer_provider_name)

@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/assigned_numbers.h>
@@ -75,46 +74,36 @@ static void bap_broadcast_source_test_suite_fixture_init(
 					    CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT;
 	const enum bt_audio_context ctx = BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED;
 	const enum bt_audio_location loc = BT_AUDIO_LOCATION_FRONT_LEFT;
-	struct bt_bap_broadcast_source_subgroup_param *subgroup_param;
-	struct bt_bap_broadcast_source_stream_param *stream_params;
-	struct bt_bap_stream *streams;
 	const uint16_t latency = 10U; /* ms*/
 	const uint32_t pd = 40000U;   /* us */
 	const uint16_t sdu = 40U;     /* octets */
 	const uint8_t rtn = 2U;
+	static struct bt_bap_broadcast_source_param param;
+	static struct bt_bap_broadcast_source_subgroup_param
+		subgroup_param[CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT];
+	static struct bt_bap_broadcast_source_stream_param
+		stream_params[CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT];
+	static struct bt_audio_codec_cfg codec_cfg;
+	static struct bt_bap_qos_cfg qos_cfg;
+	static struct bt_bap_stream streams[CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT];
+	static uint8_t bis_data[CONFIG_BT_AUDIO_CODEC_CFG_MAX_DATA_SIZE];
 
 	zassert_true(streams_per_subgroup > 0U);
 	zassert_true(sizeof(bis_cfg_data) <= CONFIG_BT_AUDIO_CODEC_CFG_MAX_DATA_SIZE);
 
-	/* Allocate memory for everything */
-	fixture->param = malloc(sizeof(struct bt_bap_broadcast_source_param));
-	subgroup_param = malloc(sizeof(struct bt_bap_broadcast_source_subgroup_param) *
-				CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT);
-	zassert_not_null(subgroup_param);
-	stream_params = malloc(sizeof(struct bt_bap_broadcast_source_stream_param) *
-			       CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT);
-	zassert_not_null(stream_params);
-	fixture->codec_cfg = malloc(sizeof(struct bt_audio_codec_cfg));
-	zassert_not_null(fixture->codec_cfg);
-	fixture->qos_cfg = malloc(sizeof(struct bt_bap_qos_cfg));
-	zassert_not_null(fixture->qos_cfg);
-	streams = malloc(sizeof(struct bt_bap_stream) * CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT);
-	zassert_not_null(streams);
-	fixture->bis_data = malloc(CONFIG_BT_AUDIO_CODEC_CFG_MAX_DATA_SIZE);
-	zassert_not_null(fixture->bis_data);
+	fixture->param = &param;
+	fixture->codec_cfg = &codec_cfg;
+	fixture->qos_cfg = &qos_cfg;
+	fixture->bis_data = bis_data;
 
 	/* Memset everything to 0 */
-	memset(fixture->param, 0, sizeof(*fixture->param));
-	memset(subgroup_param, 0,
-	       sizeof(struct bt_bap_broadcast_source_subgroup_param) *
-		       CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT);
-	memset(stream_params, 0,
-	       sizeof(struct bt_bap_broadcast_source_stream_param) *
-		       CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT);
-	memset(fixture->codec_cfg, 0, sizeof(struct bt_audio_codec_cfg));
-	memset(fixture->qos_cfg, 0, sizeof(struct bt_bap_qos_cfg));
-	memset(streams, 0, sizeof(struct bt_bap_stream) * CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT);
-	memset(fixture->bis_data, 0, CONFIG_BT_AUDIO_CODEC_CFG_MAX_DATA_SIZE);
+	memset(&param, 0, sizeof(param));
+	memset(subgroup_param, 0, sizeof(subgroup_param));
+	memset(stream_params, 0, sizeof(stream_params));
+	memset(&codec_cfg, 0, sizeof(codec_cfg));
+	memset(&qos_cfg, 0, sizeof(qos_cfg));
+	memset(streams, 0, sizeof(streams));
+	memset(bis_data, 0, sizeof(bis_data));
 
 	/* Initialize default values*/
 	*fixture->codec_cfg = BT_AUDIO_CODEC_LC3_CONFIG(
@@ -147,12 +136,9 @@ static void bap_broadcast_source_test_suite_fixture_init(
 
 static void *bap_broadcast_source_test_suite_setup(void)
 {
-	struct bap_broadcast_source_test_suite_fixture *fixture;
+	static struct bap_broadcast_source_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void bap_broadcast_source_test_suite_before(void *f)
@@ -169,7 +155,6 @@ static void bap_broadcast_source_test_suite_before(void *f)
 static void bap_broadcast_source_test_suite_after(void *f)
 {
 	struct bap_broadcast_source_test_suite_fixture *fixture = f;
-	struct bt_bap_broadcast_source_param *param;
 	int err;
 
 	if (fixture->source != NULL) {
@@ -182,28 +167,12 @@ static void bap_broadcast_source_test_suite_after(void *f)
 		fixture->source = NULL;
 	}
 
-	param = fixture->param;
-
-	free(param->params[0].params[0].stream);
-	free(param->params[0].params);
-	free(fixture->codec_cfg);
-	free(fixture->bis_data);
-	free(fixture->qos_cfg);
-	free(param->params);
-	free(param);
-
 	err = bt_bap_broadcast_source_unregister_cb(&mock_bap_broadcast_source_cb);
 	zassert_true(err == 0 || err == -ENOENT, "Unexpected error: %d", err);
 }
 
-static void bap_broadcast_source_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(bap_broadcast_source_test_suite, NULL, bap_broadcast_source_test_suite_setup,
-	    bap_broadcast_source_test_suite_before, bap_broadcast_source_test_suite_after,
-	    bap_broadcast_source_test_suite_teardown);
+	    bap_broadcast_source_test_suite_before, bap_broadcast_source_test_suite_after, NULL);
 
 ZTEST_F(bap_broadcast_source_test_suite, test_broadcast_source_create_delete)
 {

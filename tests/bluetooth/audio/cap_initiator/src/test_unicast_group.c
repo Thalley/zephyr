@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -39,39 +38,35 @@ struct cap_initiator_test_unicast_group_fixture {
 
 static void *cap_initiator_test_unicast_group_setup(void)
 {
-	struct cap_initiator_test_unicast_group_fixture *fixture;
+	static struct cap_initiator_test_unicast_group_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_initiator_test_unicast_group_before(void *f)
 {
 
 	struct cap_initiator_test_unicast_group_fixture *fixture = f;
-	struct bt_cap_unicast_group_stream_pair_param *pair_params;
-	struct bt_cap_unicast_group_stream_param *stream_params;
-	struct bt_cap_stream *cap_streams;
+	static struct bt_cap_unicast_group_param group_param;
+	static struct bt_cap_unicast_group_stream_pair_param
+		pair_params[DIV_ROUND_UP(CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT, 2U)];
+	static struct bt_cap_unicast_group_stream_param
+		stream_params[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
+	static struct bt_cap_stream cap_streams[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
+	static struct bt_bap_qos_cfg qos_cfg;
 	size_t pair_cnt = 0U;
 	size_t str_cnt = 0U;
 
 	memset(f, 0, sizeof(struct cap_initiator_test_unicast_group_fixture));
 
-	fixture->group_param = calloc(sizeof(struct bt_cap_unicast_group_param), 1);
-	zassert_not_null(fixture->group_param);
-	pair_params = calloc(sizeof(struct bt_cap_unicast_group_stream_pair_param),
-			     DIV_ROUND_UP(CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT, 2U));
-	zassert_not_null(pair_params);
-	stream_params = calloc(sizeof(struct bt_cap_unicast_group_stream_param),
-			       CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT);
-	zassert_not_null(stream_params);
-	cap_streams = calloc(sizeof(struct bt_cap_stream),
-			     CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT);
-	zassert_not_null(cap_streams);
-	fixture->qos_cfg = calloc(sizeof(struct bt_bap_qos_cfg), 1);
-	zassert_not_null(fixture->qos_cfg);
+	memset(&group_param, 0, sizeof(group_param));
+	memset(pair_params, 0, sizeof(pair_params));
+	memset(stream_params, 0, sizeof(stream_params));
+	memset(cap_streams, 0, sizeof(cap_streams));
+	memset(&qos_cfg, 0, sizeof(qos_cfg));
+
+	fixture->group_param = &group_param;
+	fixture->qos_cfg = &qos_cfg;
 
 	*fixture->qos_cfg = BT_BAP_QOS_CFG_UNFRAMED(10000u, 40u, 2u, 10u, 40000u); /* 16_2_1 */
 
@@ -98,7 +93,6 @@ static void cap_initiator_test_unicast_group_before(void *f)
 static void cap_initiator_test_unicast_group_after(void *f)
 {
 	struct cap_initiator_test_unicast_group_fixture *fixture = f;
-	struct bt_cap_unicast_group_param *group_param;
 	int err;
 
 	/* In the case of a test failing, we delete the group so that subsequent tests won't fail */
@@ -108,24 +102,10 @@ static void cap_initiator_test_unicast_group_after(void *f)
 			printk("Failed to delete unicast group (err %d)\n", err);
 		}
 	}
-
-	group_param = fixture->group_param;
-
-	free(fixture->cap_streams);
-	free(group_param->params[0].rx_param);
-	free(group_param->params);
-	free(group_param);
-	free(fixture->qos_cfg);
-}
-
-static void cap_initiator_test_unicast_group_teardown(void *f)
-{
-	free(f);
 }
 
 ZTEST_SUITE(cap_initiator_test_unicast_group, NULL, cap_initiator_test_unicast_group_setup,
-	    cap_initiator_test_unicast_group_before, cap_initiator_test_unicast_group_after,
-	    cap_initiator_test_unicast_group_teardown);
+	    cap_initiator_test_unicast_group_before, cap_initiator_test_unicast_group_after, NULL);
 
 static ZTEST_F(cap_initiator_test_unicast_group, test_initiator_unicast_group_create)
 {

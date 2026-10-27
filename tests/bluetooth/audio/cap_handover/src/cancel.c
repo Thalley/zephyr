@@ -7,7 +7,6 @@
  */
 #include <errno.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -35,12 +34,9 @@ struct cap_handover_test_cancel_fixture {
 
 static void *cap_handover_test_cancel_setup(void)
 {
-	struct cap_handover_test_cancel_fixture *fixture;
+	static struct cap_handover_test_cancel_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_handover_test_cancel_before(void *f)
@@ -72,11 +68,6 @@ static void cap_handover_test_cancel_after(void *f)
 	zassert_true(err == 0, "Unexpected error: %d", err);
 }
 
-static void cap_handover_test_cancel_teardown(void *f)
-{
-	free(f);
-}
-
 static void test_cancel(struct cap_handover_test_cancel_fixture *fixture)
 {
 	/* Get this value before cancel, as cancel will clear the active proc */
@@ -101,8 +92,7 @@ static void test_cancel(struct cap_handover_test_cancel_fixture *fixture)
 }
 
 ZTEST_SUITE(cap_handover_test_cancel, NULL, cap_handover_test_cancel_setup,
-	    cap_handover_test_cancel_before, cap_handover_test_cancel_after,
-	    cap_handover_test_cancel_teardown);
+	    cap_handover_test_cancel_before, cap_handover_test_cancel_after, NULL);
 
 static ZTEST_F(cap_handover_test_cancel, test_handover_cancel_broadcast_to_unicast)
 {

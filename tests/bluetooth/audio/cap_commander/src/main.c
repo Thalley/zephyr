@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -56,12 +55,9 @@ static void cap_commander_test_suite_fixture_init(struct cap_commander_test_suit
 
 static void *cap_commander_test_suite_setup(void)
 {
-	struct cap_commander_test_suite_fixture *fixture;
+	static struct cap_commander_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_suite_before(void *f)
@@ -83,14 +79,8 @@ static void cap_commander_test_suite_after(void *f)
 	}
 }
 
-static void cap_commander_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_commander_test_suite, NULL, cap_commander_test_suite_setup,
-	    cap_commander_test_suite_before, cap_commander_test_suite_after,
-	    cap_commander_test_suite_teardown);
+	    cap_commander_test_suite_before, cap_commander_test_suite_after, NULL);
 
 ZTEST_F(cap_commander_test_suite, test_commander_register_cb)
 {
