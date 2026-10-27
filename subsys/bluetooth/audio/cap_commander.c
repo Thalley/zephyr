@@ -215,15 +215,12 @@ static size_t broadcast_reception_get_start_proc_done_cnt(struct bt_cap_common_p
 		struct cap_broadcast_reception_start *start_param =
 			&proc_param->broadcast_reception_start;
 
-		if (start_param->started_recvd && !start_param->waiting_for_notification &&
-		    !start_param->write_pending) {
-			proc_done_cnt++;
-		} else if (active_proc->failed_conn != NULL &&
-			   proc_param->conn == active_proc->failed_conn) {
-			/* Mark failed connection as done to trigger the
-			 * bt_cap_common_proc_all_handled check for
-			 * bt_cap_common_proc_is_aborted
-			 */
+		if (bt_cap_common_proc_is_aborted()) {
+			if (!start_param->write_pending) {
+				proc_done_cnt++;
+			}
+		} else if (start_param->started_recvd && !start_param->waiting_for_notification &&
+			   !start_param->write_pending) {
 			proc_done_cnt++;
 		} else {
 			/* no op */
@@ -299,6 +296,13 @@ static void broadcast_reception_update_proc_done_cnt(struct bt_cap_common_proc *
 		active_proc->proc_cnt, active_proc->proc_done_cnt, active_proc->proc_cnt);
 
 	active_proc->proc_done_cnt = proc_done_cnt;
+}
+
+static void broadcast_reception_start_abort(struct bt_cap_common_proc *active_proc,
+					    struct bt_conn *conn, int err)
+{
+	bt_cap_common_abort_proc(conn, err);
+	active_proc->proc_initiated_cnt = active_proc->proc_cnt;
 }
 
 static struct bt_cap_commander_proc_param *
@@ -477,7 +481,7 @@ static void broadcast_reception_start_write_rsp(struct bt_cap_common_proc *activ
 	if (err != 0) {
 		LOG_DBG("Write request failed on %p: %d", conn, err);
 
-		bt_cap_common_abort_proc(conn, err);
+		broadcast_reception_start_abort(active_proc, conn, err);
 	} else {
 		LOG_DBG("Conn %p write request accepted", (void *)conn);
 	}
@@ -505,7 +509,7 @@ static void broadcast_reception_start_write_rsp(struct bt_cap_common_proc *activ
 			if (err != 0) {
 				LOG_DBG("broadcast_reception_start_write_next failed: %d", err);
 
-				bt_cap_common_abort_proc(proc_param->conn, err);
+				broadcast_reception_start_abort(active_proc, proc_param->conn, err);
 				cap_commander_proc_complete(active_proc);
 			} else {
 				bt_cap_common_unlock_proc();
@@ -873,12 +877,12 @@ static void cap_commander_handle_recv_state(struct bt_conn *conn, uint8_t src_id
 		if (big_failed || pa_sync_failed) {
 			LOG_DBG("%s sync failed for %p", big_failed ? "BIG" : "PA", conn);
 
-			bt_cap_common_abort_proc(conn, -EFAULT);
+			broadcast_reception_start_abort(active_proc, conn, -EFAULT);
 		} else if (start_param->broadcast_code_sent && state != NULL &&
 			   state->encrypt_state == BT_BAP_BIG_ENC_STATE_BAD_CODE) {
 			LOG_DBG("Bad broadcast code for %p", conn);
 
-			bt_cap_common_abort_proc(conn, -EFAULT);
+			broadcast_reception_start_abort(active_proc, conn, -EFAULT);
 		} else if (state != NULL && state->pa_sync_state == BT_BAP_PA_STATE_SYNCED &&
 			   big_synced) {
 			start_param->started_recvd = true;
@@ -952,7 +956,8 @@ static void cap_commander_handle_recv_state(struct bt_conn *conn, uint8_t src_id
 					LOG_DBG("broadcast_reception_start_write_next failed: %d",
 						err);
 
-					bt_cap_common_abort_proc(proc_param->conn, err);
+					broadcast_reception_start_abort(active_proc, proc_param->conn,
+								err);
 					cap_commander_proc_complete(active_proc);
 
 					return;

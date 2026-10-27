@@ -47,6 +47,67 @@ void set_add_src_encrypted(bool encrypted)
 	add_src_encrypted = encrypted;
 }
 
+static bool defer_broadcast_code_rsp;
+static bool defer_bad_code_state_notification;
+static struct bt_conn *deferred_broadcast_code_conn;
+static struct bt_conn *deferred_bad_code_conn;
+static struct bt_bap_scan_delegator_recv_state deferred_bad_code_recv_state;
+
+void defer_broadcast_code_response(bool defer)
+{
+	defer_broadcast_code_rsp = defer;
+}
+
+void defer_bad_code_state(bool defer)
+{
+	defer_bad_code_state_notification = defer;
+}
+
+static void broadcast_assistant_broadcast_code_cb(struct bt_conn *conn, int err)
+{
+	struct bt_bap_broadcast_assistant_cb *listener, *next;
+
+	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
+		if (listener->broadcast_code != NULL) {
+			listener->broadcast_code(conn, err);
+		}
+	}
+}
+
+static void broadcast_assistant_recv_state_cb(
+	struct bt_conn *conn, const struct bt_bap_scan_delegator_recv_state *state)
+{
+	struct bt_bap_broadcast_assistant_cb *listener, *next;
+
+	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
+		if (listener->recv_state != NULL) {
+			listener->recv_state(conn, 0, state);
+		}
+	}
+}
+
+struct bt_conn *report_deferred_bad_code_state(void)
+{
+	struct bt_conn *conn = deferred_bad_code_conn;
+
+	zassert_not_null(conn, "No deferred BAD_CODE state");
+	broadcast_assistant_recv_state_cb(conn, &deferred_bad_code_recv_state);
+	deferred_bad_code_conn = NULL;
+
+	return conn;
+}
+
+struct bt_conn *complete_deferred_broadcast_code(int err)
+{
+	struct bt_conn *conn = deferred_broadcast_code_conn;
+
+	zassert_not_null(conn, "No deferred Set Broadcast_Code response");
+	broadcast_assistant_broadcast_code_cb(conn, err);
+	deferred_broadcast_code_conn = NULL;
+
+	return conn;
+}
+
 struct bap_broadcast_assistant_recv_state_info {
 	uint8_t src_id;
 	/** Cached PAST available */
@@ -71,6 +132,19 @@ struct bap_broadcast_assistant_instance {
 
 static struct bap_broadcast_assistant_instance broadcast_assistants[CONFIG_BT_MAX_CONN];
 static uint8_t max_src_id;
+
+void reset_broadcast_assistant_mock(void)
+{
+	(void)memset(broadcast_assistants, 0, sizeof(broadcast_assistants));
+	max_src_id = 0U;
+	add_src_skip = 0U;
+	add_src_encrypted = false;
+	defer_broadcast_code_rsp = false;
+	defer_bad_code_state_notification = false;
+	deferred_broadcast_code_conn = NULL;
+	deferred_bad_code_conn = NULL;
+	(void)memset(&deferred_bad_code_recv_state, 0, sizeof(deferred_bad_code_recv_state));
+}
 
 static struct bap_broadcast_assistant_instance *inst_by_conn(struct bt_conn *conn)
 {
@@ -236,7 +310,6 @@ int bt_bap_broadcast_assistant_set_broadcast_code(
 	struct bt_conn *conn, uint8_t src_id,
 	const uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE])
 {
-	struct bt_bap_broadcast_assistant_cb *listener, *next;
 	struct bap_broadcast_assistant_instance *inst;
 	struct bt_bap_scan_delegator_recv_state state = {0};
 	int err;
@@ -244,6 +317,7 @@ int bt_bap_broadcast_assistant_set_broadcast_code(
 	zassert_not_null(conn, "conn is NULL");
 
 	inst = inst_by_conn(conn);
+	zassert_not_null(inst, "inst is NULL");
 
 	if (inst->broadcast_code_requested) {
 		zassert_equal(src_id, inst->recv_states.src_id, "Invalid src_id");
@@ -254,31 +328,35 @@ int bt_bap_broadcast_assistant_set_broadcast_code(
 	err = strncmp((const char *)broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
 	zassert_equal(0, err, "Unexpected broadcast code");
 
-	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
-		if (listener->broadcast_code != NULL) {
-			listener->broadcast_code(conn, 0);
-		}
+	if (defer_broadcast_code_rsp) {
+		zassert_is_null(deferred_broadcast_code_conn,
+				"A Set Broadcast_Code response is pending");
+		deferred_broadcast_code_conn = conn;
+	} else {
+		broadcast_assistant_broadcast_code_cb(conn, 0);
 	}
 
 	if (inst->broadcast_code_requested) {
 		/* Now that the broadcast code has been set, the source can be BIS synced */
-		inst->broadcast_code_requested = false;
-
 		state.src_id = inst->recv_states.src_id;
 		state.adv_sid = inst->recv_states.adv_sid;
 		state.broadcast_id = inst->recv_states.broadcast_id;
 		bt_addr_le_copy(&state.addr, &inst->recv_states.addr);
 		state.pa_sync_state = inst->pa_sync_state;
-		state.encrypt_state = BT_BAP_BIG_ENC_STATE_DEC;
+		state.encrypt_state = BT_BAP_BIG_ENC_STATE_BAD_CODE;
 		state.num_subgroups = inst->num_subgroups;
 		for (size_t i = 0U; i < inst->num_subgroups; i++) {
 			state.subgroups[i].bis_sync = inst->subgroups[i].bis_sync;
 		}
 
-		SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&broadcast_assistant_cbs, listener, next, _node) {
-			if (listener->recv_state != NULL) {
-				listener->recv_state(conn, 0, &state);
-			}
+		if (defer_broadcast_code_rsp && defer_bad_code_state_notification) {
+			zassert_is_null(deferred_bad_code_conn, "A BAD_CODE state is pending");
+			deferred_bad_code_conn = conn;
+			deferred_bad_code_recv_state = state;
+		} else if (!defer_broadcast_code_rsp) {
+			inst->broadcast_code_requested = false;
+			state.encrypt_state = BT_BAP_BIG_ENC_STATE_DEC;
+			broadcast_assistant_recv_state_cb(conn, &state);
 		}
 	}
 
