@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -39,12 +38,9 @@ struct ccp_call_control_server_test_suite_fixture {
 
 static void *ccp_call_control_server_test_suite_setup(void)
 {
-	struct ccp_call_control_server_test_suite_fixture *fixture;
+	static struct ccp_call_control_server_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void ccp_call_control_server_test_suite_before(void *f)
@@ -74,14 +70,9 @@ static void ccp_call_control_server_test_suite_after(void *f)
 	}
 }
 
-static void ccp_call_control_server_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(ccp_call_control_server_test_suite, NULL, ccp_call_control_server_test_suite_setup,
 	    ccp_call_control_server_test_suite_before, ccp_call_control_server_test_suite_after,
-	    ccp_call_control_server_test_suite_teardown);
+	    NULL);
 
 static void register_default_bearer(struct ccp_call_control_server_test_suite_fixture *fixture)
 {

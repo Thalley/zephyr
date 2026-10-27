@@ -10,7 +10,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include <zephyr/bluetooth/audio/ascs.h>
 #include <zephyr/bluetooth/gap.h>
@@ -46,12 +45,9 @@ struct test_ase_control_params_fixture {
 
 static void *test_ase_control_params_setup(void)
 {
-	struct test_ase_control_params_fixture *fixture;
+	static struct test_ase_control_params_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void test_ase_control_params_before(void *f)
@@ -94,16 +90,8 @@ static void test_ase_control_params_after(void *f)
 	zassert_equal(err, 0, "Unexpected err response %d", err);
 }
 
-static void test_ase_control_params_teardown(void *f)
-{
-	struct test_ase_control_params_fixture *fixture = f;
-
-	free(fixture);
-}
-
 ZTEST_SUITE(test_ase_control_params, NULL, test_ase_control_params_setup,
-	    test_ase_control_params_before, test_ase_control_params_after,
-	    test_ase_control_params_teardown);
+	    test_ase_control_params_before, test_ase_control_params_after, NULL);
 
 ZTEST_F(test_ase_control_params, test_sink_ase_control_operation_zero_length_write)
 {

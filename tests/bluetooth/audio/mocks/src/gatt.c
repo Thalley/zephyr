@@ -8,7 +8,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -110,46 +109,36 @@ void mock_bt_gatt_init(void)
 	mock_bt_gatt_is_subscribed_fake.return_val = true;
 }
 
+/* Deep copies of the notify parameters passed to mock_bt_gatt_notify_cb(). Slot N holds the
+ * parameters referenced by mock_bt_gatt_notify_cb_fake.arg1_history[N]. The last slot holds the
+ * parameters of calls that exceed the argument history.
+ */
+static struct notify_params_copy {
+	struct bt_gatt_notify_params params;
+	union {
+		struct bt_uuid uuid;
+		struct bt_uuid_16 uuid_16;
+		struct bt_uuid_32 uuid_32;
+		struct bt_uuid_128 uuid_128;
+	} uuid;
+} notify_params_copies[FFF_ARG_HISTORY_LEN + 1U];
+
 static void notify_params_deep_copy_destroy(struct bt_gatt_notify_params *params)
 {
-	struct bt_gatt_notify_params *copy;
+	const size_t history_len =
+		MIN(mock_bt_gatt_notify_cb_fake.call_count, FFF_ARG_HISTORY_LEN);
 
-	for (unsigned int i = 0U; i < mock_bt_gatt_notify_cb_fake.call_count; i++) {
-		copy = mock_bt_gatt_notify_cb_fake.arg1_history[i];
-		if (copy != params) {
-			continue;
+	for (size_t i = 0U; i < history_len; i++) {
+		if (mock_bt_gatt_notify_cb_fake.arg1_history[i] == params) {
+			mock_bt_gatt_notify_cb_fake.arg1_history[i] = NULL;
+			break;
 		}
-
-		/* Free UUID deep copy */
-		if (copy->uuid) {
-			free((void *)copy->uuid);
-		}
-
-		free(copy);
-
-		mock_bt_gatt_notify_cb_fake.arg1_history[i] = NULL;
-
-		break;
 	}
 }
 
 static void notify_params_deep_copy_destroy_all(void)
 {
-	struct bt_gatt_notify_params *copy;
-
-	for (unsigned int i = 0U; i < mock_bt_gatt_notify_cb_fake.call_count; i++) {
-		copy = mock_bt_gatt_notify_cb_fake.arg1_history[i];
-		if (copy == NULL) {
-			continue;
-		}
-
-		/* Free UUID deep copy */
-		if (copy->uuid) {
-			free((void *)copy->uuid);
-		}
-
-		free(copy);
-	}
+	(void)memset(notify_params_copies, 0, sizeof(notify_params_copies));
 }
 
 void mock_bt_gatt_cleanup(void)
@@ -157,48 +146,39 @@ void mock_bt_gatt_cleanup(void)
 	notify_params_deep_copy_destroy_all();
 }
 
-static struct bt_uuid *uuid_deep_copy(const struct bt_uuid *uuid)
+static void uuid_deep_copy(struct notify_params_copy *copy, const struct bt_uuid *uuid)
 {
-	struct bt_uuid *copy;
-
 	switch (uuid->type) {
 	case BT_UUID_TYPE_16:
-		copy = malloc(sizeof(struct bt_uuid_16));
-		zassert_not_null(copy);
-		memcpy(copy, uuid, sizeof(struct bt_uuid_16));
+		memcpy(&copy->uuid.uuid_16, uuid, sizeof(struct bt_uuid_16));
 		break;
 	case BT_UUID_TYPE_32:
-		copy = malloc(sizeof(struct bt_uuid_32));
-		zassert_not_null(copy);
-		memcpy(copy, uuid, sizeof(struct bt_uuid_32));
+		memcpy(&copy->uuid.uuid_32, uuid, sizeof(struct bt_uuid_32));
 		break;
 	case BT_UUID_TYPE_128:
-		copy = malloc(sizeof(struct bt_uuid_128));
-		zassert_not_null(copy);
-		memcpy(copy, uuid, sizeof(struct bt_uuid_128));
+		memcpy(&copy->uuid.uuid_128, uuid, sizeof(struct bt_uuid_128));
 		break;
 	default:
-		copy = NULL;
 		zassert_unreachable("Unexpected uuid->type 0x%02x", uuid->type);
 	}
 
-	return copy;
+	copy->params.uuid = &copy->uuid.uuid;
 }
 
 static struct bt_gatt_notify_params *notify_params_deep_copy(struct bt_gatt_notify_params *params)
 {
-	struct bt_gatt_notify_params *copy;
+	struct notify_params_copy *copy;
 
-	copy = malloc(sizeof(*params));
-	zassert_not_null(copy);
-
-	memcpy(copy, params, sizeof(*params));
+	copy = &notify_params_copies[MIN(mock_bt_gatt_notify_cb_fake.call_count,
+					 FFF_ARG_HISTORY_LEN)];
+	(void)memset(copy, 0, sizeof(*copy));
+	memcpy(&copy->params, params, sizeof(*params));
 
 	if (params->uuid != NULL) {
-		copy->uuid = uuid_deep_copy(params->uuid);
+		uuid_deep_copy(copy, params->uuid);
 	}
 
-	return copy;
+	return &copy->params;
 }
 
 int bt_gatt_notify_cb(struct bt_conn *conn, struct bt_gatt_notify_params *params)

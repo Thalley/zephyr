@@ -8,7 +8,6 @@
 
 #include <errno.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -41,12 +40,9 @@ static void cap_commander_test_micp_fixture_init(struct cap_commander_test_micp_
 
 static void *cap_commander_test_micp_setup(void)
 {
-	struct cap_commander_test_micp_fixture *fixture;
+	static struct cap_commander_test_micp_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_micp_before(void *f)
@@ -68,14 +64,8 @@ static void cap_commander_test_micp_after(void *f)
 	}
 }
 
-static void cap_commander_test_micp_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_commander_test_micp, NULL, cap_commander_test_micp_setup,
-	    cap_commander_test_micp_before, cap_commander_test_micp_after,
-	    cap_commander_test_micp_teardown);
+	    cap_commander_test_micp_before, cap_commander_test_micp_after, NULL);
 
 
 ZTEST_F(cap_commander_test_micp, test_commander_change_microphone_gain_setting)

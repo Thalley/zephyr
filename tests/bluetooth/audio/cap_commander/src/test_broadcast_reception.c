@@ -7,7 +7,6 @@
  */
 #include <errno.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -91,12 +90,9 @@ static void cap_commander_test_broadcast_reception_fixture_init(
 
 static void *cap_commander_test_broadcast_reception_setup(void)
 {
-	struct cap_commander_test_broadcast_reception_fixture *fixture;
+	static struct cap_commander_test_broadcast_reception_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_broadcast_reception_before(void *f)
@@ -130,11 +126,6 @@ static void cap_commander_test_broadcast_reception_after(void *f)
 	for (size_t i = 0U; i < ARRAY_SIZE(fixture->conns); i++) {
 		mock_bt_conn_disconnected(&fixture->conns[i], BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 	}
-}
-
-static void cap_commander_test_broadcast_reception_teardown(void *f)
-{
-	free(f);
 }
 
 static void test_start_param_init(void *f)
@@ -217,8 +208,7 @@ test_broadcast_reception_stop(struct bt_cap_commander_broadcast_reception_stop_p
 ZTEST_SUITE(cap_commander_test_broadcast_reception, NULL,
 	    cap_commander_test_broadcast_reception_setup,
 	    cap_commander_test_broadcast_reception_before,
-	    cap_commander_test_broadcast_reception_after,
-	    cap_commander_test_broadcast_reception_teardown);
+	    cap_commander_test_broadcast_reception_after, NULL);
 
 ZTEST_F(cap_commander_test_broadcast_reception, test_commander_reception_start)
 {

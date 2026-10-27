@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/audio/audio.h>
@@ -60,9 +59,10 @@ static void bap_base_test_suite_fixture_init(struct bap_base_test_suite_fixture 
 		0x03U,                             /* bis cc length */
 		0x02U, 0x03U, 0x03U                /* bis cc length */
 	};
+	static uint8_t valid_base_data[sizeof(base_data)];
+	static uint8_t invalid_base_data[sizeof(base_data)];
 
-	fixture->valid_base_data = malloc(sizeof(base_data));
-	zassert_not_null(fixture->valid_base_data);
+	fixture->valid_base_data = valid_base_data;
 	memcpy(fixture->valid_base_data, base_data, sizeof(base_data));
 
 	fixture->valid_base_ad.type = 0x16U; /* service data */
@@ -71,8 +71,7 @@ static void bap_base_test_suite_fixture_init(struct bap_base_test_suite_fixture 
 
 	/* Modify the CC length to generate an invalid BASE for invalid BASE tests */
 	base_data[12] = 0xaa; /* Set invalid CC length*/
-	fixture->invalid_base_data = malloc(sizeof(base_data));
-	zassert_not_null(fixture->invalid_base_data);
+	fixture->invalid_base_data = invalid_base_data;
 	memcpy(fixture->invalid_base_data, base_data, sizeof(base_data));
 
 	fixture->invalid_base_ad.type = 0x16U; /* service data */
@@ -82,12 +81,9 @@ static void bap_base_test_suite_fixture_init(struct bap_base_test_suite_fixture 
 
 static void *bap_base_test_suite_setup(void)
 {
-	struct bap_base_test_suite_fixture *fixture;
+	static struct bap_base_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void bap_base_test_suite_before(void *f)
@@ -96,21 +92,8 @@ static void bap_base_test_suite_before(void *f)
 	bap_base_test_suite_fixture_init(f);
 }
 
-static void bap_base_test_suite_after(void *f)
-{
-	struct bap_base_test_suite_fixture *fixture = f;
-
-	free(fixture->valid_base_data);
-	free(fixture->invalid_base_data);
-}
-
-static void bap_base_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(bap_base_test_suite, NULL, bap_base_test_suite_setup, bap_base_test_suite_before,
-	    bap_base_test_suite_after, bap_base_test_suite_teardown);
+	    NULL, NULL);
 
 ZTEST_F(bap_base_test_suite, test_base_get_base_from_ad)
 {

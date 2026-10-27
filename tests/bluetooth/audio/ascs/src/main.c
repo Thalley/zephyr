@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/audio/ascs.h>
@@ -108,23 +107,15 @@ static void ascs_test_suite_fixture_init(struct ascs_test_suite_fixture *fixture
 
 static void *ascs_test_suite_setup(void)
 {
-	struct ascs_test_suite_fixture *fixture;
+	static struct ascs_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void ascs_test_suite_before(void *f)
 {
 	memset(f, 0, sizeof(struct ascs_test_suite_fixture));
 	ascs_test_suite_fixture_init(f);
-}
-
-static void ascs_test_suite_teardown(void *f)
-{
-	free(f);
 }
 
 static void ascs_test_suite_after(void *f)
@@ -141,7 +132,7 @@ static void ascs_test_suite_after(void *f)
 }
 
 ZTEST_SUITE(ascs_test_suite, NULL, ascs_test_suite_setup, ascs_test_suite_before,
-	    ascs_test_suite_after, ascs_test_suite_teardown);
+	    ascs_test_suite_after, NULL);
 
 ZTEST_F(ascs_test_suite, test_has_sink_ase_chrc)
 {
