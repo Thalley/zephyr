@@ -2690,20 +2690,28 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 {
 	const struct shell_stream *sh_stream = data->sh_stream;
 	const uint8_t chan_cnt = sh_stream->lc3_chan_cnt;
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
 	enum bt_audio_location usb_chan_allocs = BT_AUDIO_LOCATION_MONO_AUDIO;
+	enum bt_audio_location usb_chan_allocs_by_index[BAP_USB_CHANNELS] = {0};
+	bool usb_chan_routes[BAP_USB_CHANNELS] = {false};
 	int16_t *usb_frames[BAP_USB_CHANNELS] = {NULL};
 	size_t usb_sample_cnt = 0U;
-	size_t decoded_frames = 0U;
 	bool usb_claimed = false;
+#endif
+	size_t decoded_frames = 0U;
 
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
 	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
 		bool has_usb_chan = false;
 
 		for (uint8_t i = 0U; i < chan_cnt; i++) {
 			enum bt_audio_location chan_alloc;
 
-			if (is_usb_in_chan(sh_stream, i, &chan_alloc)) {
+			if (i < ARRAY_SIZE(usb_chan_routes) &&
+			    is_usb_in_chan(sh_stream, i, &chan_alloc)) {
 				usb_chan_allocs |= chan_alloc;
+				usb_chan_allocs_by_index[i] = chan_alloc;
+				usb_chan_routes[i] = true;
 				has_usb_chan = true;
 			}
 		}
@@ -2714,16 +2722,18 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 							      usb_frames) == 0;
 		}
 	}
+#endif
 
 	for (uint8_t i = 0U; i < chan_cnt; i++) {
-		enum bt_audio_location chan_alloc;
 		int16_t *pcm = lc3_rx_buf;
 		int stride = 1;
 
-		if (usb_claimed && is_usb_in_chan(sh_stream, i, &chan_alloc)) {
-			pcm = usb_frames[bap_usb_get_chan_offset(chan_alloc)];
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
+		if (usb_claimed && i < ARRAY_SIZE(usb_chan_routes) && usb_chan_routes[i]) {
+			pcm = usb_frames[bap_usb_get_chan_offset(usb_chan_allocs_by_index[i])];
 			stride = BAP_USB_CHANNELS;
 		}
+#endif
 
 		/* We provide the total number of decoded frames to `decode_frame` for logging
 		 * purposes
@@ -2735,17 +2745,17 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 		decoded_frames++;
 	}
 
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
 	if (usb_claimed) {
 		/* Silence the channels that were not decoded, so that all channels advance */
 		for (size_t i = decoded_frames; i < chan_cnt; i++) {
-			enum bt_audio_location chan_alloc;
 			int16_t *pcm;
 
-			if (!is_usb_in_chan(sh_stream, (uint8_t)i, &chan_alloc)) {
+			if (i >= ARRAY_SIZE(usb_chan_routes) || !usb_chan_routes[i]) {
 				continue;
 			}
 
-			pcm = usb_frames[bap_usb_get_chan_offset(chan_alloc)];
+			pcm = usb_frames[bap_usb_get_chan_offset(usb_chan_allocs_by_index[i])];
 			for (size_t j = 0U; j < usb_sample_cnt; j++) {
 				pcm[j * BAP_USB_CHANNELS] = 0;
 			}
@@ -2753,6 +2763,7 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 
 		bap_usb_release_in_frames(usb_chan_allocs, usb_sample_cnt);
 	}
+#endif
 
 	return decoded_frames;
 }

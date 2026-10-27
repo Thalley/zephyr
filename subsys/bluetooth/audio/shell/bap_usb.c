@@ -232,11 +232,13 @@ static bool usb_in_dma_slot_busy[USB_UAC2_SLOT_CNT];
 struct usb_in_chan {
 	/* Written by the producer */
 	size_t write_cursor;
+	/* First cursor at which the consumer may use the resynchronized channel */
+	size_t resync_safe_cursor;
 	/* Incremented by the producer every time write_cursor is resynchronized */
 	uint32_t resync_cnt;
 	/* Written by the consumer when it stops waiting for this channel. The channel stays
 	 * dropped, and is thus sent as a copy of the other channel, until the producer has
-	 * resynchronized it, i.e. until resync_cnt differs from dropped_resync_cnt. This is
+	 * resynchronized it and the consumer has reached the initialized region. This is
 	 * required as the consumer then advances past write_cursor, which makes the distance
 	 * between them meaningless.
 	 */
@@ -291,10 +293,12 @@ static size_t usb_in_chan_fill(size_t write_cursor)
 	return usb_frames_between(usb_in_read_cursor, write_cursor);
 }
 
-/** Whether the consumer has stopped waiting for @p chan and it has not been resynchronized since */
+/** Whether the consumer shall continue to ignore @p chan */
 static bool usb_in_chan_is_dropped(const struct usb_in_chan *chan)
 {
-	return chan->dropped && chan->dropped_resync_cnt == chan->resync_cnt;
+	return chan->dropped &&
+	       (chan->dropped_resync_cnt == chan->resync_cnt ||
+		usb_in_read_cursor != chan->resync_safe_cursor);
 }
 
 static int16_t *usb_in_dma_slot_acquire(void)
@@ -533,6 +537,7 @@ static void usb_in_resync(size_t chan_offset, size_t safe, size_t cursor)
 	}
 
 	chan->write_cursor = cursor;
+	chan->resync_safe_cursor = safe;
 	/* Updated after the cursor, as it tells the consumer that the cursor is valid again */
 	chan->resync_cnt++;
 }
