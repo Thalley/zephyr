@@ -155,6 +155,16 @@ static size_t usb_advance(size_t cursor, size_t frames)
 	return cursor;
 }
 
+uint8_t bap_usb_get_chan_offset(enum bt_audio_location chan_alloc)
+{
+	__ASSERT((chan_alloc == BT_AUDIO_LOCATION_MONO_AUDIO ||
+		  chan_alloc == BT_AUDIO_LOCATION_FRONT_LEFT ||
+		  chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT),
+		 "Invalid chan_alloc %d", chan_alloc);
+
+	return chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT ? 1U : 0U;
+}
+
 static bool in_terminal_enabled;
 static bool out_terminal_enabled;
 static void usb_terminal_update_cb(const struct device *dev, uint8_t terminal, bool enabled,
@@ -215,11 +225,30 @@ static uint8_t *const usb_in_dma_slots[USB_UAC2_SLOT_CNT] = {
 	usb_in_dma_slot3,
 };
 static bool usb_in_dma_slot_busy[USB_UAC2_SLOT_CNT];
-static size_t usb_in_left_write_cursor;
-static size_t usb_in_right_write_cursor;
+/* State of a single channel of the USB IN ring buffer, indexed by the channel offset in an
+ * interleaved stereo frame. Each field has a single writer, so that no locking is required between
+ * the producer (the LC3 decoder) and the consumer (the USB SOF handler).
+ */
+struct usb_in_chan {
+	/* Written by the producer */
+	size_t write_cursor;
+	/* First cursor at which the consumer may use the resynchronized channel */
+	size_t resync_safe_cursor;
+	/* Incremented by the producer every time write_cursor is resynchronized */
+	uint32_t resync_cnt;
+	/* Written by the consumer when it stops waiting for this channel. The channel stays
+	 * dropped, and is thus sent as a copy of the other channel, until the producer has
+	 * resynchronized it and the consumer has reached the initialized region. This is
+	 * required as the consumer then advances past write_cursor, which makes the distance
+	 * between them meaningless.
+	 */
+	uint32_t dropped_resync_cnt;
+	bool dropped;
+	/* Written when the channel is (de)activated */
+	bool active;
+};
+static struct usb_in_chan usb_in_chans[BAP_USB_CHANNELS];
 static size_t usb_in_read_cursor;
-static bool usb_in_left_active;
-static bool usb_in_right_active;
 /* Number of USB frames in a single transfer to the host. This is the wMaxPacketSize of the IN
  * endpoint, and is thus USB_SAMPLE_CNT when operating at full speed, but only an eighth of that
  * at high speed where a transfer covers a microframe rather than a frame.
@@ -264,6 +293,14 @@ static size_t usb_in_chan_fill(size_t write_cursor)
 	return usb_frames_between(usb_in_read_cursor, write_cursor);
 }
 
+/** Whether the consumer shall continue to ignore @p chan */
+static bool usb_in_chan_is_dropped(const struct usb_in_chan *chan)
+{
+	return chan->dropped &&
+	       (chan->dropped_resync_cnt == chan->resync_cnt ||
+		usb_in_read_cursor != chan->resync_safe_cursor);
+}
+
 static int16_t *usb_in_dma_slot_acquire(void)
 {
 	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_dma_slot_busy); i++) {
@@ -297,8 +334,7 @@ static void usb_data_request(const struct device *dev)
 	size_t slot_size;
 	size_t max_underruns;
 	int16_t *pcm_buf;
-	bool left_active;
-	bool right_active;
+	bool active[BAP_USB_CHANNELS];
 	bool starving = false;
 	bool give_up;
 	bool have_data;
@@ -307,8 +343,6 @@ static void usb_data_request(const struct device *dev)
 	slot_frames = usb_in_slot_frames;
 	slot_size = slot_frames * BAP_USB_CHANNELS * USB_BYTES_PER_SAMPLE;
 	max_underruns = USB_IN_MAX_UNDERRUNS * (USB_SAMPLE_CNT / slot_frames);
-	left_active = usb_in_left_active;
-	right_active = usb_in_right_active;
 
 	/* A channel that has starved for too long is ignored entirely, so that a channel which
 	 * does produce data is not held back indefinitely. This bounds the effect of a producer
@@ -316,18 +350,37 @@ static void usb_data_request(const struct device *dev)
 	 */
 	give_up = usb_in_underrun_cnt >= max_underruns;
 
-	if (left_active && usb_in_chan_fill(usb_in_left_write_cursor) < slot_frames) {
-		left_active = !give_up;
-		starving = true;
-	}
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+		struct usb_in_chan *chan = &usb_in_chans[i];
 
-	if (right_active && usb_in_chan_fill(usb_in_right_write_cursor) < slot_frames) {
-		right_active = !give_up;
-		starving = true;
+		active[i] = chan->active;
+		if (!active[i]) {
+			continue;
+		}
+
+		if (usb_in_chan_is_dropped(chan)) {
+			active[i] = false;
+			continue;
+		}
+
+		chan->dropped = false;
+
+		if (usb_in_chan_fill(chan->write_cursor) < slot_frames) {
+			starving = true;
+
+			if (give_up) {
+				/* The read cursor may now pass the write cursor, so ignore the
+				 * channel until the producer has resynchronized it
+				 */
+				chan->dropped_resync_cnt = chan->resync_cnt;
+				chan->dropped = true;
+				active[i] = false;
+			}
+		}
 	}
 
 	/* Only consume data that every channel that is still considered active has produced */
-	have_data = (left_active || right_active) && (!starving || give_up);
+	have_data = (active[0] || active[1]) && (!starving || give_up);
 
 	if (have_data) {
 		const int16_t *src;
@@ -346,9 +399,9 @@ static void usb_data_request(const struct device *dev)
 			return;
 		}
 
-		if (left_active != right_active) {
+		if (active[0] != active[1]) {
 			/* Duplicate the single active channel to both while copying */
-			const size_t off = left_active ? 0U : 1U;
+			const size_t off = active[0] ? 0U : 1U;
 
 			for (size_t i = 0U; i < slot_frames; i++) {
 				const int16_t sample = src[(i * BAP_USB_CHANNELS) + off];
@@ -386,6 +439,21 @@ static void usb_data_request(const struct device *dev)
 		pcm_buf = dma_buf;
 		(void)memset(pcm_buf, 0, slot_size);
 
+		if (!active[0] && !active[1]) {
+			const size_t next_cursor = usb_advance(usb_in_read_cursor, slot_frames);
+
+			for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+				struct usb_in_chan *chan = &usb_in_chans[i];
+
+				if (chan->active && chan->dropped &&
+				    chan->resync_cnt != chan->dropped_resync_cnt &&
+				    chan->resync_safe_cursor == next_cursor) {
+					usb_in_read_cursor = next_cursor;
+					break;
+				}
+			}
+		}
+
 		usb_in_underrun_cnt++;
 		cnt++;
 		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB silence", cnt);
@@ -414,46 +482,30 @@ static void usb_buf_release_cb(const struct device *dev, uint8_t terminal, void 
 	(void)usb_in_dma_slot_release(buf);
 }
 
-static size_t usb_in_chan_offset(enum bt_audio_location chan_alloc)
+/**
+ * Determine which entries of usb_in_chans are covered by @p chan_allocs. Mono is stored in, and
+ * sent from, the left channel.
+ */
+static void usb_in_get_chans(enum bt_audio_location chan_allocs, bool chans[BAP_USB_CHANNELS])
 {
-	return chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT ? 1U : 0U;
-}
-
-static size_t *usb_in_get_write_cursor(enum bt_audio_location chan_alloc)
-{
-	if (chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT) {
-		return &usb_in_right_write_cursor;
-	}
-
-	/* Mono is stored in, and sent from, the left channel */
-	return &usb_in_left_write_cursor;
+	chans[0] = chan_allocs == BT_AUDIO_LOCATION_MONO_AUDIO ||
+		   (chan_allocs & BT_AUDIO_LOCATION_FRONT_LEFT) != 0;
+	chans[1] = (chan_allocs & BT_AUDIO_LOCATION_FRONT_RIGHT) != 0;
 }
 
 void bap_usb_activate_in_chan(enum bt_audio_location chan_alloc)
 {
-	const bool is_right = chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT;
+	struct usb_in_chan *chan = &usb_in_chans[bap_usb_get_chan_offset(chan_alloc)];
 
-	/* There is a */
-	if (is_right) {
-		usb_in_right_active = true;
-		usb_in_right_write_cursor = usb_in_read_cursor;
-	} else {
-		usb_in_left_active = true;
-		usb_in_left_write_cursor = usb_in_read_cursor;
-	}
+	chan->write_cursor = usb_in_read_cursor;
+	chan->active = true;
 
 	LOG_INF("Activated USB IN channel 0x%08X", (uint32_t)chan_alloc);
 }
 
 void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc)
 {
-	const bool is_right = chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT;
-
-	if (is_right) {
-		usb_in_right_active = false;
-	} else {
-		usb_in_left_active = false;
-	}
+	usb_in_chans[bap_usb_get_chan_offset(chan_alloc)].active = false;
 
 	usb_in_underrun_cnt = 0U;
 
@@ -461,84 +513,149 @@ void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc)
 }
 
 /**
- * Place a channel at USB_IN_TARGET_PREFILL_FRAMES ahead of the consumer, and fill the frames it
- * skips over with silence so that the consumer never sends stale ring buffer content.
+ * Determine the position USB_IN_TARGET_PREFILL_FRAMES ahead of @p read_cursor that a channel is
+ * placed at when it is resynchronized, and the first frame (@p safe) that may be written.
  *
  * The cursor is rounded up to a multiple of @p sample_cnt so that it stays at or ahead of the
  * consumer, and so that the LC3 frames written from it never straddle the end of the ring buffer.
  */
-static size_t usb_in_resync(enum bt_audio_location chan_alloc, size_t sample_cnt)
+static size_t usb_in_resync_target(size_t read_cursor, size_t sample_cnt, size_t *safe)
 {
-	const size_t chan_offset = usb_in_chan_offset(chan_alloc);
-	/* Snapshot the consumer state once; both are owned by the usbd thread */
-	const size_t read_cursor = usb_in_read_cursor;
-	const size_t slot_frames = usb_in_slot_frames;
 	/* The consumer may be copying the frames at read_cursor right now, so the
 	 * first frame this producer may touch is one transfer ahead of it.
 	 */
-	const size_t safe = usb_advance(read_cursor, slot_frames);
-	size_t cursor = usb_align_down(safe, sample_cnt);
-	size_t silence_cnt;
+	size_t cursor;
 
-	if (cursor != safe) {
+	*safe = usb_advance(read_cursor, usb_in_slot_frames);
+	cursor = usb_align_down(*safe, sample_cnt);
+
+	if (cursor != *safe) {
 		cursor = usb_advance(cursor, sample_cnt);
 	}
 
-	cursor = usb_advance(cursor, usb_align_down(USB_IN_TARGET_PREFILL_FRAMES, sample_cnt));
+	return usb_advance(cursor, usb_align_down(USB_IN_TARGET_PREFILL_FRAMES, sample_cnt));
+}
 
-	silence_cnt = usb_frames_between(safe, cursor);
+/**
+ * Place the channel at @p chan_offset at @p cursor, and fill the frames from @p safe that it
+ * skips over with silence so that the consumer never sends stale ring buffer content.
+ */
+static void usb_in_resync(size_t chan_offset, size_t safe, size_t cursor)
+{
+	struct usb_in_chan *chan = &usb_in_chans[chan_offset];
+	const size_t silence_cnt = usb_frames_between(safe, cursor);
+
 	for (size_t i = 0U; i < silence_cnt; i++) {
 		const size_t frame = usb_advance(safe, i);
 
 		usb_in_ring_buf[(frame * BAP_USB_CHANNELS) + chan_offset] = 0;
 	}
 
-	return cursor;
+	chan->write_cursor = cursor;
+	chan->resync_safe_cursor = safe;
+	/* Updated after the cursor, as it tells the consumer that the cursor is valid again */
+	chan->resync_cnt++;
 }
 
-int16_t *bap_usb_claim_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt)
+/**
+ * Whether the channel at @p chan_offset shall be resynchronized before writing @p sample_cnt
+ * frames to it, given the consumer position @p read_cursor
+ */
+static bool usb_in_needs_resync(size_t chan_offset, size_t read_cursor, size_t sample_cnt)
 {
-	size_t *cursor = usb_in_get_write_cursor(chan_alloc);
-	int16_t *frame;
-	size_t fill;
+	const struct usb_in_chan *chan = &usb_in_chans[chan_offset];
+	const size_t fill = usb_frames_between(read_cursor, chan->write_cursor);
+
+	/* Resynchronize the channel if the consumer has stopped waiting for it (in which case the
+	 * consumer may have passed the write cursor any number of times), if it has fallen behind
+	 * the consumer (which has already sent silence for the data being decoded now), if it has
+	 * run so far ahead that it is about to overwrite data that has not been sent yet, or if it
+	 * is not aligned to its own frame size (which happens on the first frame after the channel
+	 * was activated).
+	 *
+	 * The upper bound is inclusive, as a write cursor that ends up exactly at the read cursor
+	 * is indistinguishable from an empty ring buffer.
+	 */
+	if (usb_in_chan_is_dropped(chan) || fill < sample_cnt ||
+	    fill >= (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
+	    (chan->write_cursor % sample_cnt) != 0U) {
+		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
+				       "Resynchronizing USB IN channel %zu (fill was %zu)",
+				       chan_offset, fill);
+
+		return true;
+	}
+
+	return false;
+}
+
+int bap_usb_claim_in_frames(enum bt_audio_location chan_allocs, size_t sample_cnt,
+			    int16_t *frames[BAP_USB_CHANNELS])
+{
+	/* Snapshot the consumer position once, so that all channels are evaluated against the
+	 * same position. It is owned by the usbd thread.
+	 */
+	const size_t read_cursor = usb_in_read_cursor;
+	bool chans[BAP_USB_CHANNELS];
+	bool resync[BAP_USB_CHANNELS];
+	size_t safe;
+	size_t target;
 
 	if (sample_cnt == 0U || sample_cnt > USB_MAX_FRAMES_PER_LC3_FRAME ||
 	    (USB_RING_FRAMES % sample_cnt) != 0U) {
 		LOG_WRN_RATELIMIT("Invalid sample count %zu", sample_cnt);
 
-		return NULL;
+		return -EINVAL;
 	}
 
-	fill = usb_in_chan_fill(*cursor);
+	usb_in_get_chans(chan_allocs, chans);
 
-	/* Resynchronize the channel if it has fallen behind the consumer (which has already sent
-	 * silence for the data being decoded now), if it has run so far ahead that it is about to
-	 * overwrite data that has not been sent yet, or if it is not aligned to its own frame size
-	 * (which happens on the first frame after the channel was activated).
-	 *
-	 * The upper bound is inclusive, as a write cursor that ends up exactly at the read cursor
-	 * is indistinguishable from an empty ring buffer.
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+		resync[i] = chans[i] && usb_in_needs_resync(i, read_cursor, sample_cnt);
+	}
+
+	/* The channels of a stereo stream are decoded from the same SDU, so they shall be written
+	 * to the same position. If either has to be resynchronized, or if they have diverged,
+	 * resynchronize both to the same target.
 	 */
-	if (fill < sample_cnt || fill >= (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
-	    (*cursor % sample_cnt) != 0U) {
-		*cursor = usb_in_resync(chan_alloc, sample_cnt);
-
-		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
-				       "Resynchronized USB IN channel 0x%08X (fill was %zu)",
-				       (uint32_t)chan_alloc, fill);
+	if (chans[0] && chans[1] &&
+	    (resync[0] || resync[1] ||
+	     usb_in_chans[0].write_cursor != usb_in_chans[1].write_cursor)) {
+		resync[0] = true;
+		resync[1] = true;
 	}
 
-	frame = &usb_in_ring_buf[(*cursor * BAP_USB_CHANNELS) + usb_in_chan_offset(chan_alloc)];
+	target = usb_in_resync_target(read_cursor, sample_cnt, &safe);
 
-	return frame;
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+		if (!chans[i]) {
+			frames[i] = NULL;
+			continue;
+		}
+
+		if (resync[i]) {
+			usb_in_resync(i, safe, target);
+		}
+
+		frames[i] = &usb_in_ring_buf[(usb_in_chans[i].write_cursor * BAP_USB_CHANNELS) + i];
+	}
+
+	return 0;
 }
 
-void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt)
+void bap_usb_release_in_frames(enum bt_audio_location chan_allocs, size_t sample_cnt)
 {
-	size_t *cursor = usb_in_get_write_cursor(chan_alloc);
+	bool chans[BAP_USB_CHANNELS];
 	static size_t cnt;
 
-	*cursor = usb_advance(*cursor, sample_cnt);
+	usb_in_get_chans(chan_allocs, chans);
+
+	for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+		if (chans[i]) {
+			usb_in_chans[i].write_cursor =
+				usb_advance(usb_in_chans[i].write_cursor, sample_cnt);
+		}
+	}
 
 	cnt++;
 	LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Added USB audio frame", cnt);
@@ -598,16 +715,6 @@ static size_t usb_out_slot_frames = USB_SAMPLE_CNT;
  * where usb_out_stream_sync() resynchronizes the stream, so that the wait can always be satisfied.
  */
 #define USB_OUT_MAX_PREFILL_FRAMES (USB_RING_FRAMES - (USB_MAX_FRAMES_PER_LC3_FRAME * 2U))
-
-uint8_t bap_usb_get_chan_offset(enum bt_audio_location chan_alloc)
-{
-	__ASSERT((chan_alloc == BT_AUDIO_LOCATION_MONO_AUDIO ||
-		  chan_alloc == BT_AUDIO_LOCATION_FRONT_LEFT ||
-		  chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT),
-		 "Invalid chan_alloc %d", chan_alloc);
-
-	return chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT ? 1U : 0U;
-}
 
 /** Ring buffer index of an absolute frame position */
 static size_t usb_ring_index(uint64_t pos)
