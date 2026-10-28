@@ -357,6 +357,10 @@ void cap_initiator_unicast_audio_proc_complete(struct bt_cap_common_proc *active
 int cap_commander_broadcast_reception_start(
 	struct bt_cap_common_proc *active_proc,
 	const struct bt_cap_commander_broadcast_reception_start_param *param);
+#if defined(CONFIG_BT_BAP_BROADCAST_ASSISTANT)
+void cap_commander_broadcast_reception_start_disconnected(
+	struct bt_cap_common_proc *active_proc);
+#endif /* CONFIG_BT_BAP_BROADCAST_ASSISTANT */
 int cap_commander_broadcast_reception_stop(
 	struct bt_cap_common_proc *active_proc,
 	const struct bt_cap_commander_broadcast_reception_stop_param *param);

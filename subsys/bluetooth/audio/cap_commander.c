@@ -216,7 +216,7 @@ static size_t broadcast_reception_get_start_proc_done_cnt(struct bt_cap_common_p
 			&proc_param->broadcast_reception_start;
 
 		if (bt_cap_common_proc_is_aborted()) {
-			if (!start_param->write_pending) {
+			if (!start_param->write_pending || proc_param->conn == NULL) {
 				proc_done_cnt++;
 			}
 		} else if (start_param->started_recvd && !start_param->waiting_for_notification &&
@@ -303,6 +303,13 @@ static void broadcast_reception_start_abort(struct bt_cap_common_proc *active_pr
 {
 	bt_cap_common_abort_proc(conn, err);
 	active_proc->proc_initiated_cnt = active_proc->proc_cnt;
+}
+
+void cap_commander_broadcast_reception_start_disconnected(
+	struct bt_cap_common_proc *active_proc)
+{
+	active_proc->proc_initiated_cnt = active_proc->proc_cnt;
+	broadcast_reception_update_proc_done_cnt(active_proc);
 }
 
 static struct bt_cap_commander_proc_param *

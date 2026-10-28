@@ -29,6 +29,7 @@
 
 #include "bap_broadcast_assistant.h"
 #include "cap_commander.h"
+#include "audio/cap_internal.h"
 #include "conn.h"
 #include "expects_util.h"
 #include "cap_mocks.h"
@@ -63,6 +64,17 @@ static size_t broadcast_code_cnt;
 
 static void test_start_param_init(void *f);
 static void test_stop_param_init(void *f);
+
+static void add_unstarted_third_start_member(
+	struct cap_commander_test_broadcast_reception_fixture *fixture)
+{
+	struct bt_cap_common_proc *active_proc = bt_cap_common_get_active_proc();
+
+	zassert_equal(2U, active_proc->proc_initiated_cnt);
+	active_proc->proc_cnt = 3U;
+	active_proc->proc_param.commander[2].conn = &fixture->conns[2];
+	bt_cap_common_unlock_proc();
+}
 
 static void cap_commander_broadcast_assistant_recv_state_cb(
 	struct bt_conn *conn, int err, const struct bt_bap_scan_delegator_recv_state *state)
@@ -354,6 +366,87 @@ static ZTEST_F(cap_commander_test_broadcast_reception,
 	zassert_equal_ptr(failed_conn,
 			  mock_cap_commander_broadcast_reception_start_cb_fake.arg0_history[0]);
 	zassert_equal(-EIO,
+		      mock_cap_commander_broadcast_reception_start_cb_fake.arg1_history[0]);
+	zexpect_call_count("bt_cap_commander_cb.distribute_broadcast_code", 0,
+			   mock_cap_commander_distribute_broadcast_code_cb_fake.call_count);
+}
+
+static ZTEST_F(cap_commander_test_broadcast_reception,
+	       test_commander_reception_start_disconnect_during_code_write)
+{
+	int err;
+
+	if (CONFIG_BT_MAX_CONN < 3) {
+		ztest_test_skip();
+	}
+
+	err = bt_cap_commander_register_cb(&mock_cap_commander_cb);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	fixture->start_param.count = 2U;
+	fixture->start_param.encryption = true;
+	memcpy(fixture->start_param.broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
+	set_add_src_encrypted(true);
+	defer_broadcast_code_response(true);
+
+	err = bt_cap_commander_broadcast_reception_start(&fixture->start_param);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+	add_unstarted_third_start_member(fixture);
+
+	mock_bt_conn_disconnected(&fixture->conns[0], BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 0,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+
+	zassert_equal_ptr(&fixture->conns[1], complete_deferred_broadcast_code(0));
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 1,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+	zassert_equal_ptr(&fixture->conns[0],
+			  mock_cap_commander_broadcast_reception_start_cb_fake.arg0_history[0]);
+	zassert_equal(-ECONNRESET,
+		      mock_cap_commander_broadcast_reception_start_cb_fake.arg1_history[0]);
+	zexpect_call_count("bt_cap_commander_cb.distribute_broadcast_code", 0,
+			   mock_cap_commander_distribute_broadcast_code_cb_fake.call_count);
+}
+
+static ZTEST_F(cap_commander_test_broadcast_reception,
+	       test_commander_reception_start_disconnect_after_bad_code)
+{
+	struct bt_conn *failed_conn;
+	int err;
+
+	if (CONFIG_BT_MAX_CONN < 3) {
+		ztest_test_skip();
+	}
+
+	err = bt_cap_commander_register_cb(&mock_cap_commander_cb);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+
+	fixture->start_param.count = 2U;
+	fixture->start_param.encryption = true;
+	memcpy(fixture->start_param.broadcast_code, BROADCAST_CODE, sizeof(BROADCAST_CODE));
+	set_add_src_encrypted(true);
+	defer_broadcast_code_response(true);
+	defer_bad_code_state(true);
+
+	err = bt_cap_commander_broadcast_reception_start(&fixture->start_param);
+	zassert_equal(0, err, "Unexpected return value %d", err);
+	add_unstarted_third_start_member(fixture);
+
+	failed_conn = report_deferred_bad_code_state();
+	zassert_equal_ptr(&fixture->conns[1], failed_conn);
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 0,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+
+	mock_bt_conn_disconnected(&fixture->conns[0], BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 0,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+
+	zassert_equal_ptr(failed_conn, complete_deferred_broadcast_code(0));
+	zexpect_call_count("bt_cap_commander_cb.broadcast_reception_start", 1,
+			   mock_cap_commander_broadcast_reception_start_cb_fake.call_count);
+	zassert_equal_ptr(failed_conn,
+			  mock_cap_commander_broadcast_reception_start_cb_fake.arg0_history[0]);
+	zassert_equal(-EFAULT,
 		      mock_cap_commander_broadcast_reception_start_cb_fake.arg1_history[0]);
 	zexpect_call_count("bt_cap_commander_cb.distribute_broadcast_code", 0,
 			   mock_cap_commander_distribute_broadcast_code_cb_fake.call_count);
