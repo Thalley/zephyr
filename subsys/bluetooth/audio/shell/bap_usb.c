@@ -439,6 +439,21 @@ static void usb_data_request(const struct device *dev)
 		pcm_buf = dma_buf;
 		(void)memset(pcm_buf, 0, slot_size);
 
+		if (!active[0] && !active[1]) {
+			const size_t next_cursor = usb_advance(usb_in_read_cursor, slot_frames);
+
+			for (size_t i = 0U; i < ARRAY_SIZE(usb_in_chans); i++) {
+				struct usb_in_chan *chan = &usb_in_chans[i];
+
+				if (chan->active && chan->dropped &&
+				    chan->resync_cnt != chan->dropped_resync_cnt &&
+				    chan->resync_safe_cursor == next_cursor) {
+					usb_in_read_cursor = next_cursor;
+					break;
+				}
+			}
+		}
+
 		usb_in_underrun_cnt++;
 		cnt++;
 		LOG_DBG_RATELIMIT_RATE(USB_LOG_RATE, "[%zu]: Sending USB silence", cnt);
