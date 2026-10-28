@@ -150,13 +150,13 @@ static void uuid_deep_copy(struct notify_params_copy *copy, const struct bt_uuid
 {
 	switch (uuid->type) {
 	case BT_UUID_TYPE_16:
-		memcpy(&copy->uuid.uuid_16, uuid, sizeof(struct bt_uuid_16));
+		(void)memcpy(&copy->uuid.uuid_16, uuid, sizeof(struct bt_uuid_16));
 		break;
 	case BT_UUID_TYPE_32:
-		memcpy(&copy->uuid.uuid_32, uuid, sizeof(struct bt_uuid_32));
+		(void)memcpy(&copy->uuid.uuid_32, uuid, sizeof(struct bt_uuid_32));
 		break;
 	case BT_UUID_TYPE_128:
-		memcpy(&copy->uuid.uuid_128, uuid, sizeof(struct bt_uuid_128));
+		(void)memcpy(&copy->uuid.uuid_128, uuid, sizeof(struct bt_uuid_128));
 		break;
 	default:
 		zassert_unreachable("Unexpected uuid->type 0x%02x", uuid->type);
@@ -172,7 +172,7 @@ static struct bt_gatt_notify_params *notify_params_deep_copy(struct bt_gatt_noti
 	copy = &notify_params_copies[MIN(mock_bt_gatt_notify_cb_fake.call_count,
 					 FFF_ARG_HISTORY_LEN)];
 	(void)memset(copy, 0, sizeof(*copy));
-	memcpy(&copy->params, params, sizeof(*params));
+	(void)memcpy(&copy->params, params, sizeof(*params));
 
 	if (params->uuid != NULL) {
 		uuid_deep_copy(copy, params->uuid);

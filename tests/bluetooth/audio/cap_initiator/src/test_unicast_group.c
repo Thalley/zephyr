@@ -34,6 +34,13 @@ struct cap_initiator_test_unicast_group_fixture {
 	struct bt_cap_unicast_group *unicast_group;
 	struct bt_bap_qos_cfg *qos_cfg;
 	void *cap_streams;
+	struct bt_cap_unicast_group_param group_param_storage;
+	struct bt_cap_unicast_group_stream_pair_param
+		pair_params_storage[DIV_ROUND_UP(CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT, 2U)];
+	struct bt_cap_unicast_group_stream_param
+		stream_params_storage[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
+	struct bt_cap_stream cap_streams_storage[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
+	struct bt_bap_qos_cfg qos_cfg_storage;
 };
 
 static void *cap_initiator_test_unicast_group_setup(void)
@@ -47,26 +54,24 @@ static void cap_initiator_test_unicast_group_before(void *f)
 {
 
 	struct cap_initiator_test_unicast_group_fixture *fixture = f;
-	static struct bt_cap_unicast_group_param group_param;
-	static struct bt_cap_unicast_group_stream_pair_param
-		pair_params[DIV_ROUND_UP(CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT, 2U)];
-	static struct bt_cap_unicast_group_stream_param
-		stream_params[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
-	static struct bt_cap_stream cap_streams[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
-	static struct bt_bap_qos_cfg qos_cfg;
+	struct bt_cap_unicast_group_param *group_param = &fixture->group_param_storage;
+	struct bt_cap_unicast_group_stream_pair_param *pair_params = fixture->pair_params_storage;
+	struct bt_cap_unicast_group_stream_param *stream_params = fixture->stream_params_storage;
+	struct bt_cap_stream *cap_streams = fixture->cap_streams_storage;
+	struct bt_bap_qos_cfg *qos_cfg = &fixture->qos_cfg_storage;
 	size_t pair_cnt = 0U;
 	size_t str_cnt = 0U;
 
-	memset(f, 0, sizeof(struct cap_initiator_test_unicast_group_fixture));
+	(void)memset(f, 0, sizeof(struct cap_initiator_test_unicast_group_fixture));
 
-	memset(&group_param, 0, sizeof(group_param));
-	memset(pair_params, 0, sizeof(pair_params));
-	memset(stream_params, 0, sizeof(stream_params));
-	memset(cap_streams, 0, sizeof(cap_streams));
-	memset(&qos_cfg, 0, sizeof(qos_cfg));
+	(void)memset(group_param, 0, sizeof(*group_param));
+	(void)memset(pair_params, 0, sizeof(fixture->pair_params_storage));
+	(void)memset(stream_params, 0, sizeof(fixture->stream_params_storage));
+	(void)memset(cap_streams, 0, sizeof(fixture->cap_streams_storage));
+	(void)memset(qos_cfg, 0, sizeof(*qos_cfg));
 
-	fixture->group_param = &group_param;
-	fixture->qos_cfg = &qos_cfg;
+	fixture->group_param = group_param;
+	fixture->qos_cfg = qos_cfg;
 
 	*fixture->qos_cfg = BT_BAP_QOS_CFG_UNFRAMED(10000u, 40u, 2u, 10u, 40000u); /* 16_2_1 */
 
