@@ -326,9 +326,23 @@ static void bt_cap_common_disconnected(struct bt_conn *conn, uint8_t reason)
 			for (size_t i = 0U; i < active_proc_ptr->proc_initiated_cnt; i++) {
 				if (active_proc.proc_param.commander[i].conn == conn) {
 					active_proc.proc_param.commander[i].conn = NULL;
+#if defined(CONFIG_BT_BAP_BROADCAST_ASSISTANT)
+					if (active_proc_ptr->proc_type !=
+					    BT_CAP_COMMON_PROC_TYPE_BROADCAST_RECEPTION_START) {
+						active_proc_ptr->proc_done_cnt++;
+					}
+#else
 					active_proc_ptr->proc_done_cnt++;
+#endif /* CONFIG_BT_BAP_BROADCAST_ASSISTANT */
 				}
 			}
+
+#if defined(CONFIG_BT_BAP_BROADCAST_ASSISTANT)
+			if (active_proc_ptr->proc_type ==
+			    BT_CAP_COMMON_PROC_TYPE_BROADCAST_RECEPTION_START) {
+				cap_commander_broadcast_reception_start_disconnected(active_proc_ptr);
+			}
+#endif /* CONFIG_BT_BAP_BROADCAST_ASSISTANT */
 
 			if (bt_cap_common_proc_all_handled()) {
 				cap_commander_proc_complete(active_proc_ptr);

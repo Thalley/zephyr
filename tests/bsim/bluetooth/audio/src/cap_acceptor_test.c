@@ -58,6 +58,7 @@ CREATE_FLAG(flag_broadcaster_synced);
 CREATE_FLAG(flag_base_received);
 CREATE_FLAG(flag_pa_synced);
 CREATE_FLAG(flag_syncable);
+CREATE_FLAG(flag_big_encrypted);
 CREATE_FLAG(flag_pa_sync_lost);
 CREATE_FLAG(flag_pa_request);
 CREATE_FLAG(flag_bis_sync_requested);
@@ -74,6 +75,7 @@ static struct bt_le_per_adv_sync *pa_sync;
 static uint32_t broadcaster_broadcast_id = BT_BAP_INVALID_BROADCAST_ID;
 static struct audio_test_stream broadcast_sink_streams[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 static bool expect_rx;
+static uint8_t g_broadcast_code[BT_ISO_BROADCAST_CODE_SIZE];
 
 static const struct bt_bap_qos_cfg_pref unicast_qos_pref =
 	BT_BAP_QOS_CFG_PREF(true, BT_GAP_LE_PHY_2M, 0u, 60u, 20000u, 40000u, 20000u, 40000u);
@@ -136,7 +138,8 @@ static void sync_sink(void)
 
 	LOG_INF("Syncing the sink to 0x%08x", bis_sync_bitfield);
 
-	err = bt_bap_broadcast_sink_sync(g_broadcast_sink, bis_sync_bitfield, bap_streams, NULL);
+	err = bt_bap_broadcast_sink_sync(g_broadcast_sink, bis_sync_bitfield, bap_streams,
+					 TEST_FLAG(flag_big_encrypted) ? g_broadcast_code : NULL);
 	if (err != 0) {
 		FAIL("Unable to sync the sink: %d\n", err);
 		return;
@@ -179,6 +182,7 @@ static void delete_sink(void)
 	g_broadcast_sink = NULL;
 	UNSET_FLAG(flag_base_received);
 	UNSET_FLAG(flag_syncable);
+	UNSET_FLAG(flag_big_encrypted);
 }
 
 static void update_sink_state(void)
@@ -190,9 +194,12 @@ static void update_sink_state(void)
 			create_sink();
 		}
 
-		/* Only sync if possible and if not already synced or syncing */
+		/* Only sync if possible and if not already synced or syncing. An encrypted BIG
+		 * can only be synced to once the broadcast code has been received.
+		 */
 		if (g_broadcast_sink != NULL && TEST_FLAG(flag_base_received) &&
 		    TEST_FLAG(flag_syncable) && !TEST_FLAG(flag_broadcaster_synced) &&
+		    (!TEST_FLAG(flag_big_encrypted) || TEST_FLAG(flag_broadcast_code)) &&
 		    bis_sync_bitfield == 0U) {
 			LOG_INF("Syncing sink %p", g_broadcast_sink);
 			sync_sink();
@@ -314,6 +321,11 @@ static void syncable_cb(struct bt_bap_broadcast_sink *sink, const struct bt_iso_
 {
 	LOG_INF("Broadcast sink %p syncable with%s encryption",
 	       sink, biginfo->encryption ? "" : "out");
+	if (biginfo->encryption) {
+		SET_FLAG(flag_big_encrypted);
+	} else {
+		UNSET_FLAG(flag_big_encrypted);
+	}
 	SET_FLAG(flag_syncable);
 
 	update_sink_state();
@@ -676,7 +688,10 @@ static void broadcast_code_cb(struct bt_conn *conn,
 		return;
 	}
 
+	(void)memcpy(g_broadcast_code, broadcast_code, sizeof(g_broadcast_code));
 	SET_FLAG(flag_broadcast_code);
+
+	update_sink_state();
 }
 
 static void recv_state_updated_cb(struct bt_conn *conn,
