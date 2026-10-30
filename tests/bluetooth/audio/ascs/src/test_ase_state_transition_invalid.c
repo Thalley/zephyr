@@ -10,7 +10,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/assigned_numbers.h>
@@ -52,13 +51,10 @@ struct test_ase_state_transition_invalid_fixture {
 
 static void *test_ase_state_transition_invalid_setup(void)
 {
-	struct test_ase_state_transition_invalid_fixture *fixture;
-
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
+	static struct test_ase_state_transition_invalid_fixture fixture;
 
 
-	return fixture;
+	return &fixture;
 }
 
 static void test_ase_state_transition_invalid_before(void *f)
@@ -96,14 +92,9 @@ static void test_ase_state_transition_invalid_after(void *f)
 	zassert_equal(err, 0, "Unexpected err response %d", err);
 }
 
-static void test_ase_state_transition_invalid_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(test_ase_state_transition_invalid, NULL, test_ase_state_transition_invalid_setup,
 	    test_ase_state_transition_invalid_before, test_ase_state_transition_invalid_after,
-	    test_ase_state_transition_invalid_teardown);
+	    NULL);
 
 static void test_client_config_codec_expect_transition_error(struct bt_conn *conn, uint8_t ase_id,
 							     const struct bt_gatt_attr *ase_cp)

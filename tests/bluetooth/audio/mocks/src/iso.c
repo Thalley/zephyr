@@ -7,13 +7,14 @@
 
 #include <errno.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <string.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/iso.h>
 #include <zephyr/fff.h>
 #include <zephyr/net_buf.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/toolchain.h>
 #include <zephyr/ztest_assert.h>
 
@@ -24,6 +25,32 @@
 #define FFF_FAKES_LIST(FAKE) FAKE(bt_iso_chan_get_tx_sync)
 
 static struct bt_iso_server *iso_server;
+
+/* An entry is free when its chan is NULL */
+static struct bt_conn iso_conns[CONFIG_BT_ISO_MAX_CHAN];
+
+static struct bt_conn *iso_conn_alloc(struct bt_iso_chan *chan)
+{
+	ARRAY_FOR_EACH_PTR(iso_conns, iso) {
+		if (iso->chan == NULL) {
+			(void)memset(iso, 0, sizeof(*iso));
+			iso->chan = chan;
+
+			return iso;
+		}
+	}
+
+	zassert_unreachable("No free ISO connection");
+
+	return NULL;
+}
+
+static void iso_conn_free(struct bt_conn *iso)
+{
+	if (iso != NULL) {
+		iso->chan = NULL;
+	}
+}
 
 DEFINE_FAKE_VALUE_FUNC(int, bt_iso_chan_get_tx_sync, const struct bt_iso_chan *,
 		       struct bt_iso_tx_info *);
@@ -138,10 +165,7 @@ int mock_bt_iso_accept(struct bt_conn *conn, uint8_t cig_id, uint8_t cis_id,
 
 	zassert_not_null(*chan, "chan is NULL");
 
-	iso = malloc(sizeof(struct bt_conn));
-	zassert_not_null(iso);
-
-	iso->chan = (*chan);
+	iso = iso_conn_alloc(*chan);
 	mock_bt_iso_connected(iso);
 
 	return 0;
@@ -151,7 +175,7 @@ int mock_bt_iso_disconnected(struct bt_iso_chan *chan, uint8_t err)
 {
 	chan->state = BT_ISO_STATE_DISCONNECTED;
 	chan->ops->disconnected(chan, err);
-	free(chan->iso);
+	iso_conn_free(chan->iso);
 	chan->iso = NULL;
 
 	return 0;
@@ -159,6 +183,9 @@ int mock_bt_iso_disconnected(struct bt_iso_chan *chan, uint8_t err)
 
 #if defined(CONFIG_BT_BAP_BROADCAST_SOURCE)
 static struct bt_iso_big_cb *iso_cb;
+
+/* An entry is free when its num_bis is 0 */
+static struct bt_iso_big bigs[CONFIG_BT_ISO_MAX_BIG];
 
 int bt_iso_big_register_cb(struct bt_iso_big_cb *cb)
 {
@@ -182,9 +209,14 @@ int bt_iso_big_create(struct bt_le_ext_adv *padv, struct bt_iso_big_create_param
 	zassert_not_null(param);
 	zassert_not_equal(param->num_bis, 0);
 
-	big = malloc(sizeof(struct bt_iso_big));
-	zassert_not_null(big);
-	big->num_bis = 0U;
+	big = NULL;
+	ARRAY_FOR_EACH_PTR(bigs, b) {
+		if (b->num_bis == 0U) {
+			big = b;
+			break;
+		}
+	}
+	zassert_not_null(big, "No free BIG");
 
 	for (uint8_t i = 0U; i < param->num_bis; i++) {
 		struct bt_iso_chan *bis = param->bis_channels[i];
@@ -192,12 +224,10 @@ int bt_iso_big_create(struct bt_le_ext_adv *padv, struct bt_iso_big_create_param
 
 		zassert_not_null(bis);
 
-		iso = malloc(sizeof(struct bt_conn));
-		zassert_not_null(iso);
+		iso = iso_conn_alloc(bis);
 		big->bis[i] = bis;
 		big->num_bis++;
 
-		iso->chan = bis;
 		mock_bt_iso_connected(iso);
 	}
 
@@ -227,7 +257,7 @@ int bt_iso_big_terminate(struct bt_iso_big *big)
 		iso_cb->stopped(big, BT_HCI_ERR_LOCALHOST_TERM_CONN);
 	}
 
-	free(big);
+	big->num_bis = 0U;
 
 	return 0;
 }

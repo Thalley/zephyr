@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -79,12 +78,9 @@ struct cap_handover_unicast_to_broadcast_test_suite_fixture {
 
 static void *cap_handover_unicast_to_broadcast_test_suite_setup(void)
 {
-	struct cap_handover_unicast_to_broadcast_test_suite_fixture *fixture;
+	static struct cap_handover_unicast_to_broadcast_test_suite_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_handover_unicast_to_broadcast_test_suite_before(void *f)
@@ -281,16 +277,10 @@ static void cap_handover_unicast_to_broadcast_test_suite_after(void *f)
 	}
 }
 
-static void cap_handover_unicast_to_broadcast_test_suite_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_handover_unicast_to_broadcast_test_suite, NULL,
 	    cap_handover_unicast_to_broadcast_test_suite_setup,
 	    cap_handover_unicast_to_broadcast_test_suite_before,
-	    cap_handover_unicast_to_broadcast_test_suite_after,
-	    cap_handover_unicast_to_broadcast_test_suite_teardown);
+	    cap_handover_unicast_to_broadcast_test_suite_after, NULL);
 
 static void validate_handover_callback(void)
 {

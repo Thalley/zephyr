@@ -7,7 +7,6 @@
  */
 
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -66,12 +65,9 @@ static void cap_commander_test_distribute_broadcast_code_fixture_init(
 
 static void *cap_commander_test_distribute_broadcast_code_setup(void)
 {
-	struct cap_commander_test_distribute_broadcast_code_fixture *fixture;
+	static struct cap_commander_test_distribute_broadcast_code_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_commander_test_distribute_broadcast_code_before(void *f)
@@ -107,11 +103,6 @@ static void cap_commander_test_distribute_broadcast_code_after(void *f)
 	}
 }
 
-static void cap_commander_test_distribute_broadcast_code_teardown(void *f)
-{
-	free(f);
-}
-
 static void test_distribute_broadcast_code(
 	struct bt_cap_commander_distribute_broadcast_code_param *distribute_broadcast_code_param)
 {
@@ -130,8 +121,7 @@ static void test_distribute_broadcast_code(
 ZTEST_SUITE(cap_commander_test_distribute_broadcast_code, NULL,
 	    cap_commander_test_distribute_broadcast_code_setup,
 	    cap_commander_test_distribute_broadcast_code_before,
-	    cap_commander_test_distribute_broadcast_code_after,
-	    cap_commander_test_distribute_broadcast_code_teardown);
+	    cap_commander_test_distribute_broadcast_code_after, NULL);
 
 ZTEST_F(cap_commander_test_distribute_broadcast_code, test_commander_distribute_broadcast_code)
 {

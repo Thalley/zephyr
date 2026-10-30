@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/autoconf.h>
@@ -147,12 +146,9 @@ static void init_default_params(struct cap_initiator_test_unicast_stop_fixture *
 
 static void *cap_initiator_test_unicast_stop_setup(void)
 {
-	struct cap_initiator_test_unicast_stop_fixture *fixture;
+	static struct cap_initiator_test_unicast_stop_fixture fixture;
 
-	fixture = malloc(sizeof(*fixture));
-	zassert_not_null(fixture);
-
-	return fixture;
+	return &fixture;
 }
 
 static void cap_initiator_test_unicast_stop_before(void *f)
@@ -207,14 +203,8 @@ static void cap_initiator_test_unicast_stop_after(void *f)
 	}
 }
 
-static void cap_initiator_test_unicast_stop_teardown(void *f)
-{
-	free(f);
-}
-
 ZTEST_SUITE(cap_initiator_test_unicast_stop, NULL, cap_initiator_test_unicast_stop_setup,
-	    cap_initiator_test_unicast_stop_before, cap_initiator_test_unicast_stop_after,
-	    cap_initiator_test_unicast_stop_teardown);
+	    cap_initiator_test_unicast_stop_before, cap_initiator_test_unicast_stop_after, NULL);
 
 static ZTEST_F(cap_initiator_test_unicast_stop,
 	       test_initiator_unicast_stop_disable_state_codec_configured)
