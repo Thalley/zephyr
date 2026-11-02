@@ -296,9 +296,14 @@ static size_t usb_in_chan_fill(size_t write_cursor)
 /** Whether the consumer shall continue to ignore @p chan */
 static bool usb_in_chan_is_dropped(const struct usb_in_chan *chan)
 {
+	/* The initialized region runs from the safe cursor to the producer cursor. */
+	const size_t read_offset = usb_frames_between(chan->resync_safe_cursor,
+						      usb_in_read_cursor);
+	const size_t write_offset = usb_frames_between(chan->resync_safe_cursor,
+						       chan->write_cursor);
+
 	return chan->dropped &&
-	       (chan->dropped_resync_cnt == chan->resync_cnt ||
-		usb_in_read_cursor != chan->resync_safe_cursor);
+	       (chan->dropped_resync_cnt == chan->resync_cnt || read_offset >= write_offset);
 }
 
 static int16_t *usb_in_dma_slot_acquire(void)
@@ -576,7 +581,8 @@ static bool usb_in_needs_resync(size_t chan_offset, size_t read_cursor, size_t s
 	 * The upper bound is inclusive, as a write cursor that ends up exactly at the read cursor
 	 * is indistinguishable from an empty ring buffer.
 	 */
-	if (usb_in_chan_is_dropped(chan) || fill < sample_cnt ||
+	if ((chan->dropped && chan->dropped_resync_cnt == chan->resync_cnt) ||
+	    fill < sample_cnt ||
 	    fill >= (USB_RING_FRAMES - USB_MAX_FRAMES_PER_LC3_FRAME) ||
 	    (chan->write_cursor % sample_cnt) != 0U) {
 		LOG_WRN_RATELIMIT_RATE(USB_LOG_RATE,
