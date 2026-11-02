@@ -49,17 +49,25 @@ void bap_usb_activate_in_chan(enum bt_audio_location chan_alloc);
 void bap_usb_deactivate_in_chan(enum bt_audio_location chan_alloc);
 
 /**
- * Provide a pointer to the position of @p chan_alloc in the interleaved USB IN ring buffer that
- * the next decoded frame shall be written to.
+ * Provide pointers to the positions in the interleaved USB IN ring buffer that the next decoded
+ * frame of each channel in @p chan_allocs shall be written to.
  *
- * @p sample_cnt samples shall be written with a stride of BAP_USB_CHANNELS, after which the channel
- * shall be advanced with bap_usb_release_in_frame(). Returns NULL if @p chan_alloc cannot
- * currently be written.
+ * @p chan_allocs is @ref BT_AUDIO_LOCATION_MONO_AUDIO, @ref BT_AUDIO_LOCATION_FRONT_LEFT,
+ * @ref BT_AUDIO_LOCATION_FRONT_RIGHT or both of the latter for a stereo stream, in which case the
+ * channels are kept at the same position. @p frames is indexed by bap_usb_get_chan_offset(), and
+ * entries for channels not in @p chan_allocs are set to NULL.
+ *
+ * @p sample_cnt samples shall be written to each frame with a stride of BAP_USB_CHANNELS, after
+ * which the channels shall be advanced together with bap_usb_release_in_frames().
+ *
+ * @retval 0 Success
+ * @retval -EINVAL Invalid @p sample_cnt
  */
-int16_t *bap_usb_claim_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt);
+int bap_usb_claim_in_frames(enum bt_audio_location chan_allocs, size_t sample_cnt,
+			    int16_t *frames[BAP_USB_CHANNELS]);
 
-/** Advance @p chan_alloc past the frame claimed with bap_usb_claim_in_frame() */
-void bap_usb_release_in_frame(enum bt_audio_location chan_alloc, size_t sample_cnt);
+/** Advance @p chan_allocs past the frames claimed with bap_usb_claim_in_frames() */
+void bap_usb_release_in_frames(enum bt_audio_location chan_allocs, size_t sample_cnt);
 
 /** Offset of @p chan_alloc in an interleaved stereo USB frame */
 /**

@@ -2650,57 +2650,90 @@ static bool decode_frame(struct lc3_data *data, size_t frame_cnt, int16_t *pcm, 
 }
 
 /**
- * Determine where the decoded data for channel @p index of @p sh_stream shall be written.
- *
- * If the channel is sent to USB, this is a pointer directly into the interleaved USB IN ring
- * buffer, so that the decoder writes the data in its final location. Otherwise it is the scratch
- * buffer, as the data is only used for statistics.
+ * Determine whether the decoded data for channel @p index of @p sh_stream shall be sent to USB, and
+ * if so, which USB IN channel @p chan_alloc it is sent as.
  */
-static int16_t *get_decode_dest(const struct shell_stream *sh_stream, uint8_t index, int *stride,
-				enum bt_audio_location *chan_alloc)
+static bool is_usb_in_chan(const struct shell_stream *sh_stream, uint8_t index,
+			   enum bt_audio_location *chan_alloc)
 {
-	int16_t *pcm;
 	int err;
 
-	*stride = 1;
-
 	if (!IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
-		return lc3_rx_buf;
+		return false;
 	}
 
 	err = get_lc3_chan_alloc_from_index(sh_stream, index, chan_alloc);
 	if (err != 0) {
 		/* Not suitable for USB */
-		return lc3_rx_buf;
+		return false;
 	}
 
 	/* We only want to send left or right to USB from one stream */
 	if ((*chan_alloc == BT_AUDIO_LOCATION_FRONT_LEFT && sh_stream != usb_left_stream) ||
 	    (*chan_alloc == BT_AUDIO_LOCATION_FRONT_RIGHT && sh_stream != usb_right_stream) ||
 	    (*chan_alloc == BT_AUDIO_LOCATION_MONO_AUDIO && sh_stream != usb_left_stream)) {
-		return lc3_rx_buf;
+		return false;
 	}
 
-	pcm = bap_usb_claim_in_frame(*chan_alloc, bap_usb_get_read_cnt(sh_stream));
-	if (pcm == NULL) {
-		return lc3_rx_buf;
-	}
-
-	*stride = BAP_USB_CHANNELS;
-
-	return pcm;
+	return true;
 }
 
+/**
+ * Decode a frame block of @p sh_stream.
+ *
+ * The channels that are sent to USB are decoded directly into their final location in the
+ * interleaved USB IN ring buffer. All of them are claimed before decoding and released after, so
+ * that the channels of a stereo stream stay at the same position. The other channels are decoded
+ * into the scratch buffer, as the data is only used for statistics.
+ */
 static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 {
 	const struct shell_stream *sh_stream = data->sh_stream;
 	const uint8_t chan_cnt = sh_stream->lc3_chan_cnt;
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
+	enum bt_audio_location usb_chan_allocs = BT_AUDIO_LOCATION_MONO_AUDIO;
+	enum bt_audio_location usb_chan_allocs_by_index[BAP_USB_CHANNELS] = {0};
+	bool usb_chan_routes[BAP_USB_CHANNELS] = {false};
+	int16_t *usb_frames[BAP_USB_CHANNELS] = {NULL};
+	size_t usb_sample_cnt = 0U;
+	bool usb_claimed = false;
+#endif
 	size_t decoded_frames = 0U;
 
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
+	if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS)) {
+		bool has_usb_chan = false;
+
+		for (uint8_t i = 0U; i < chan_cnt; i++) {
+			enum bt_audio_location chan_alloc;
+
+			if (i < ARRAY_SIZE(usb_chan_routes) &&
+			    is_usb_in_chan(sh_stream, i, &chan_alloc)) {
+				usb_chan_allocs |= chan_alloc;
+				usb_chan_allocs_by_index[i] = chan_alloc;
+				usb_chan_routes[i] = true;
+				has_usb_chan = true;
+			}
+		}
+
+		if (has_usb_chan) {
+			usb_sample_cnt = bap_usb_get_read_cnt(sh_stream);
+			usb_claimed = bap_usb_claim_in_frames(usb_chan_allocs, usb_sample_cnt,
+							      usb_frames) == 0;
+		}
+	}
+#endif
+
 	for (uint8_t i = 0U; i < chan_cnt; i++) {
-		enum bt_audio_location chan_alloc = BT_AUDIO_LOCATION_MONO_AUDIO;
-		int stride;
-		int16_t *pcm = get_decode_dest(sh_stream, i, &stride, &chan_alloc);
+		int16_t *pcm = lc3_rx_buf;
+		int stride = 1;
+
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
+		if (usb_claimed && i < ARRAY_SIZE(usb_chan_routes) && usb_chan_routes[i]) {
+			pcm = usb_frames[bap_usb_get_chan_offset(usb_chan_allocs_by_index[i])];
+			stride = BAP_USB_CHANNELS;
+		}
+#endif
 
 		/* We provide the total number of decoded frames to `decode_frame` for logging
 		 * purposes
@@ -2710,10 +2743,27 @@ static size_t decode_frame_block(struct lc3_data *data, size_t frame_cnt)
 		}
 
 		decoded_frames++;
-		if (IS_ENABLED(CONFIG_USBD_AUDIO2_CLASS) && stride == BAP_USB_CHANNELS) {
-			bap_usb_release_in_frame(chan_alloc, bap_usb_get_read_cnt(sh_stream));
-		}
 	}
+
+#if defined(CONFIG_USBD_AUDIO2_CLASS)
+	if (usb_claimed) {
+		/* Silence the channels that were not decoded, so that all channels advance */
+		for (size_t i = decoded_frames; i < chan_cnt; i++) {
+			int16_t *pcm;
+
+			if (i >= ARRAY_SIZE(usb_chan_routes) || !usb_chan_routes[i]) {
+				continue;
+			}
+
+			pcm = usb_frames[bap_usb_get_chan_offset(usb_chan_allocs_by_index[i])];
+			for (size_t j = 0U; j < usb_sample_cnt; j++) {
+				pcm[j * BAP_USB_CHANNELS] = 0;
+			}
+		}
+
+		bap_usb_release_in_frames(usb_chan_allocs, usb_sample_cnt);
+	}
+#endif
 
 	return decoded_frames;
 }
