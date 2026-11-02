@@ -95,7 +95,7 @@ config BT_LOG
 
 config BT_MAX_CONN
 	int
-	default 2
+	default 3
 
 config BT_PERIPHERAL
 	bool

@@ -67,6 +67,8 @@ New APIs and options
 
   * Audio
 
+    * :c:member:`bt_cap_commander_broadcast_reception_start_param.broadcast_code`
+    * :c:member:`bt_cap_commander_broadcast_reception_start_param.encryption`
     * :c:func:`bt_pacs_get_location`
     * :c:struct:`bt_pacs_cb`
     * :c:func:`bt_pacs_register_cb`

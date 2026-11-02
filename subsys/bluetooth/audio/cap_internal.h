@@ -128,11 +128,16 @@ struct cap_broadcast_reception_start {
 	bool write_pending: 1;
 	bool waiting_for_notification: 1;
 	bool started_recvd: 1;
+	bool encryption: 1;
+	bool broadcast_code_requested: 1;
+	bool broadcast_code_sent: 1;
+	uint8_t src_id;
 	uint8_t adv_sid;
 	uint32_t broadcast_id;
 	uint16_t pa_interval;
 	uint8_t num_subgroups;
 	struct bt_bap_bass_subgroup subgroups[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS];
+	uint8_t broadcast_code[BT_ISO_BROADCAST_CODE_SIZE];
 };
 
 struct cap_broadcast_reception_stop {
@@ -352,6 +357,10 @@ void cap_initiator_unicast_audio_proc_complete(struct bt_cap_common_proc *active
 int cap_commander_broadcast_reception_start(
 	struct bt_cap_common_proc *active_proc,
 	const struct bt_cap_commander_broadcast_reception_start_param *param);
+#if defined(CONFIG_BT_BAP_BROADCAST_ASSISTANT)
+void cap_commander_broadcast_reception_start_disconnected(
+	struct bt_cap_common_proc *active_proc);
+#endif /* CONFIG_BT_BAP_BROADCAST_ASSISTANT */
 int cap_commander_broadcast_reception_stop(
 	struct bt_cap_common_proc *active_proc,
 	const struct bt_cap_commander_broadcast_reception_stop_param *param);
