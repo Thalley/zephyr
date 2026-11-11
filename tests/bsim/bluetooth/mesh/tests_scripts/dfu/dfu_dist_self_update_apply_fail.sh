@@ -69,12 +69,12 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #      - DFD Server phase == BT_MESH_DFD_PHASE_FAILED.
 #      - Self-target's targets[] entry phase == BT_MESH_DFU_PHASE_APPLY_FAIL.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_self_update_apply_fail \
     dfu_dist_dfu_self_update_apply_fail -flash_erase \
     -- -argstest targets=1 recover=0
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_self_update_apply_fail \
     dfu_dist_dfu_self_update_apply_fail -flash_rm \
     -- -argstest targets=1 recover=1

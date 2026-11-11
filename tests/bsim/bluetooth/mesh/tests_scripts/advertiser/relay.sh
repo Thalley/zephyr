@@ -14,5 +14,5 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
 RunTest mesh_adv_tx_send_relay adv_tx_send_relay
 
-overlay="overlay_multi_adv_sets_conf"
+overlay="extra_multi_adv_sets_conf"
 RunTest mesh_adv_tx_send_relay_multi_adv_sets adv_tx_send_relay

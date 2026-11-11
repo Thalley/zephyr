@@ -20,10 +20,10 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 4. DUT checks that the stuck key was substituted by the real key.
 # 5. DUT starts mesh with loading stored data and checks that if they were restored correctly.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_pst_prov_data_check_stuck_key persistence_provisioning_data_save -flash_erase \
 	-- -argstest persist-stuck-key=1
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_pst_prov_data_check_stuck_key persistence_provisioning_data_load -flash_rm \
 	-- -argstest persist-stuck-key=1

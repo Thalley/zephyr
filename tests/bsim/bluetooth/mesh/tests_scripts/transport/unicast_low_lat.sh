@@ -4,5 +4,5 @@
 
 source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
-overlay=overlay_low_lat_conf
+overlay=extra_low_lat_conf
 RunTest mesh_transport_unicast_low_lat transport_tx_unicast transport_rx_unicast

@@ -18,10 +18,10 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 4. After a delay, the DUT resumes and notifies the Tester, which checks that the
 #    advertising resumes.
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_gatt_suspend_disable_resume \
 	suspend_dut_gatt_suspend_disable_resume suspend_tester_gatt
 
-overlay="overlay_gatt_conf_overlay_low_lat_conf"
+overlay="extra_gatt_conf_extra_low_lat_conf"
 RunTest mesh_gatt_suspend_disable_resume_low_lat \
 	suspend_dut_gatt_suspend_disable_resume suspend_tester_gatt

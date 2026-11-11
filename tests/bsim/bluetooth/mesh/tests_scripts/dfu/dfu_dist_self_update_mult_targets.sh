@@ -55,13 +55,13 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #      - phase == BT_MESH_DFU_PHASE_APPLY_SUCCESS.
 #      - status == BT_MESH_DFU_SUCCESS.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_self_update_no_change \
     dfu_dist_dfu_self_update -flash_erase \
     dfu_target_dfu_no_change -flash_erase \
     -- -argstest targets=2 recover=0
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_self_update_no_change \
     dfu_dist_dfu_self_update -flash_rm \
     dfu_target_dfu_no_change -flash_rm \

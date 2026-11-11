@@ -9,7 +9,7 @@ RunTest mesh_prov_pb_adv_repr \
 	prov_provisioner_reprovision \
 	-- -argstest prov-bearer=1
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_prov_pb_gatt_repr \
 	prov_device_reprovision \
 	prov_provisioner_reprovision \

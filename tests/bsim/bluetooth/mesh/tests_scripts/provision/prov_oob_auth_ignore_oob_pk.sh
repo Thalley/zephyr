@@ -10,7 +10,7 @@ RunTest mesh_prov_pb_adv_device_w_oob_pk_prvnr_wt_pk \
 	prov_device_oob_public_key prov_provisioner_oob_auth_no_oob_public_key \
 	-- -argstest prov-bearer=1
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_prov_pb_gatt_device_w_oob_pk_prvnr_wt_pk \
 	prov_device_oob_public_key prov_provisioner_oob_auth_no_oob_public_key \
 	-- -argstest prov-bearer=2

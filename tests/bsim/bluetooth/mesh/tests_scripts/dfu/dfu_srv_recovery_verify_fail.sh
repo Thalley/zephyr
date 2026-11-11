@@ -10,12 +10,12 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # target.
 # Second test pair: tests recovery from Verify Fail begin new distribution that will end there,
 # reboot devices and continue to Applying.
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_dist_recover_verify_fail \
   dfu_cli_stop -flash_erase dfu_target_dfu_stop -flash_erase \
   -- -argstest recover=0 expected-phase=5
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash dfu_dist_recover_verify_fail \
   dfu_cli_stop -flash_rm dfu_target_dfu_stop -flash_rm \
   -- -argstest recover=1 expected-phase=6

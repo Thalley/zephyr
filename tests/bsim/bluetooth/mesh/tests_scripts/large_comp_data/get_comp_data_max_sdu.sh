@@ -14,6 +14,6 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 3. When server status arrive, remove status field data and compare received
 #    comp data with local comp data and assure that the received message length
 #    is 378 bytes (380 bytes access payload).
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest mesh_lcd_test_max_access_payload \
 	lcd_cli_max_sdu_comp_data_request lcd_srv_comp_data_status_respond

@@ -9,7 +9,7 @@ RunTest mesh_prov_pb_adv_oob_auth \
 	prov_device_oob_auth prov_provisioner_oob_auth \
 	-- -argstest prov-bearer=1
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_prov_pb_gatt_oob_auth \
 	prov_device_oob_auth prov_provisioner_oob_auth \
 	-- -argstest prov-bearer=2

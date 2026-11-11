@@ -21,17 +21,17 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # The client asserts that every target acknowledged the cancel and that the
 # local server is back in BT_MESH_DFU_PHASE_IDLE.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_cli_cancel_in_transfer \
     dfu_cli_cancel dfu_target_dfu_cancel \
     -- -argstest cancel-step=0
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_cli_cancel_after_verify \
     dfu_cli_cancel dfu_target_dfu_cancel \
     -- -argstest cancel-step=1
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_cli_cancel_after_apply \
     dfu_cli_cancel dfu_target_dfu_cancel \
     -- -argstest cancel-step=2

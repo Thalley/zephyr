@@ -12,10 +12,10 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 3. Devices reboot
 # 4. Tester retrieves and verifies configuration of the Subnet Bridge node
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_brg_persistence \
 	brg_tester_persistence -flash_erase brg_bridge_simple -flash_erase
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_brg_persistence \
 	brg_tester_persistence brg_bridge_simple

@@ -35,7 +35,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 4. Test asserts the distribution ended in the failed state:
 #      - DFD Server phase == BT_MESH_DFD_PHASE_FAILED (not COMPLETED).
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_self_update_apply_err \
     dfu_dist_dfu_self_update_apply_err \
     -- -argstest targets=1 recover=0

@@ -18,6 +18,7 @@ app=samples/bluetooth/peripheral_hr \
 app=tests/bsim/bluetooth/samples/central_hr_peripheral_hr \
   sysbuild=1 \
   extra_conf_file=${ZEPHYR_BASE}/samples/bluetooth/central_hr/prj.conf \
+  exe_name=bs_${BOARD_TS}_${app}_prj_conf \
   compile
 app=samples/bluetooth/peripheral_hr \
   sysbuild=1 \

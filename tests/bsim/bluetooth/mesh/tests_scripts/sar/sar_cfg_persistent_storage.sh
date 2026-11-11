@@ -8,6 +8,6 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # Tests must be added in sequence.
 # First test sets SAR TX/RX configuration.
 # Second test restores it from flash and checks if configuration persisted.
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash sar_persistence sar_srv_cfg_store -flash_erase
 RunTestFlash sar_persistence sar_srv_cfg_restore -flash_rm

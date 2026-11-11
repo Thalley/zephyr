@@ -16,10 +16,10 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #    with stored data from the first test.
 # 3. DUT starts mesh with loading stored data and checks that if they were restored correctly.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_pst_prov_data_check persistence_provisioning_data_save -flash_erase \
 	-- -argstest persist-stuck-key=0
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_pst_prov_data_check persistence_provisioning_data_load -flash_rm \
 	-- -argstest persist-stuck-key=0

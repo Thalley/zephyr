@@ -43,7 +43,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #    to the adv medium again.
 
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest proxy_adv_multi_subnet_coex \
 	beacon_tx_proxy_adv_multi_subnet_coex \
 	beacon_rx_proxy_adv_multi_subnet_coex \

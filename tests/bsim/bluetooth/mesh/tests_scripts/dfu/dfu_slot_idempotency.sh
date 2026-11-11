@@ -5,5 +5,5 @@
 source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
 # Test DFU Slot API. This test tests that the APIs are idempotent.
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_slot_idempotency dfu_dist_dfu_slot_idempotency

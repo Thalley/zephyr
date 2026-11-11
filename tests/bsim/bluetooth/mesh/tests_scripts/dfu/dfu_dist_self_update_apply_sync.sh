@@ -31,7 +31,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #      - Local DFU Server phase == BT_MESH_DFU_PHASE_IDLE.
 #      - Exactly one Completed phase notification.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_self_update_apply_sync \
     dfu_dist_dfu_self_update_apply_sync \
     -- -argstest targets=1 recover=0

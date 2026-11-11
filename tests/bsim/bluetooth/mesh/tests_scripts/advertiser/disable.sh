@@ -37,8 +37,8 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 RunTest mesh_adv_disable adv_tx_disable adv_rx_disable
 
 # Low latency overlay uses legacy advertiser
-overlay=overlay_low_lat_conf
+overlay=extra_low_lat_conf
 RunTest mesh_adv_disable_low_lat adv_tx_disable adv_rx_disable
 
-overlay=overlay_workq_sys_conf
+overlay=extra_workq_sys_conf
 RunTest mesh_adv_disable_workq adv_tx_disable adv_rx_disable

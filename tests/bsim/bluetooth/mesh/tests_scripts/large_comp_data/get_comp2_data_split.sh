@@ -19,6 +19,6 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #    comp data with corresponding bytes in local comp data.
 # 6. Client merges the two samples and checks that the collected data is
 #    correctly merged, continuous, and matches its local comp data.
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest mesh_lcd_test_comp2_data_split \
 	lcd_srv_comp_data_status_respond lcd_cli_split_comp_data_request -- -argstest page=2

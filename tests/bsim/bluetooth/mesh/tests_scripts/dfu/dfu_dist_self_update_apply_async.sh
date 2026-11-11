@@ -39,7 +39,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #      - Exactly one Completed phase notification, so the synchronous path in
 #        dfu_confirmed() does not report it a second time.
 
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_self_update_apply_async \
     dfu_dist_dfu_self_update_apply_async \
     -- -argstest targets=1 recover=0

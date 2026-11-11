@@ -8,7 +8,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # 1. Initialize and configure tester and iut instances.
 # 3. Tester sends a solicitation PDU.
 # 4. Tester scans for beacons and expects to receive at least one private net ID advertisement.
-overlay="overlay_pst_conf_overlay_gatt_conf"
+overlay="extra_pst_conf_extra_gatt_conf"
 RunTest proxy_sol_beacon_rcvd \
 	proxy_sol_tester_beacon_rcvd \
 	proxy_sol_iut_beacon_send

@@ -13,5 +13,5 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
 RunTest mesh_adv_tx_send_cancel adv_tx_send_cancel
 
-overlay="overlay_multi_adv_sets_conf"
+overlay="extra_multi_adv_sets_conf"
 RunTest mesh_adv_tx_send_cancel_multi_adv_sets adv_tx_send_cancel

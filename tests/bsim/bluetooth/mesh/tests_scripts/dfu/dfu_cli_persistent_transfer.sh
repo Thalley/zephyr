@@ -5,7 +5,7 @@
 source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
 # The test instance sequence must stay as it is due to addressing scheme
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_persistency \
 	dfu_cli_fail_on_persistency \
 	dfu_target_fail_on_metadata \

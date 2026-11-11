@@ -19,107 +19,107 @@ tests:
 
   bluetooth.mesh.bsim.image.pst:
     build_only: true
-    extra_overlay_confs:
-      - overlay_pst.conf
+    extra_conf_files:
+      - extra_pst.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_pst_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_pst_conf
 
   bluetooth.mesh.bsim.image.gatt:
     build_only: true
-    extra_overlay_confs:
-      - overlay_gatt.conf
+    extra_conf_files:
+      - extra_gatt.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_gatt_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_gatt_conf
 
   bluetooth.mesh.bsim.image.gatt_separate:
     build_only: true
-    extra_overlay_confs:
-      - overlay_gatt_separate.conf
+    extra_conf_files:
+      - extra_gatt_separate.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_gatt_separate_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_gatt_separate_conf
 
   bluetooth.mesh.bsim.image.low_lat:
     build_only: true
-    extra_overlay_confs:
-      - overlay_low_lat.conf
+    extra_conf_files:
+      - extra_low_lat.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_low_lat_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_low_lat_conf
 
   bluetooth.mesh.bsim.image.workq_sys:
     build_only: true
-    extra_overlay_confs:
-      - overlay_workq_sys.conf
+    extra_conf_files:
+      - extra_workq_sys.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_workq_sys_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_workq_sys_conf
 
   bluetooth.mesh.bsim.image.multi_adv_sets:
     build_only: true
-    extra_overlay_confs:
-      - overlay_multi_adv_sets.conf
+    extra_conf_files:
+      - extra_multi_adv_sets.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_multi_adv_sets_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_multi_adv_sets_conf
 
   bluetooth.mesh.bsim.image.lpn_scan_on:
     build_only: true
-    extra_overlay_confs:
-      - overlay_lpn_scan_on.conf
+    extra_conf_files:
+      - extra_lpn_scan_on.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_lpn_scan_on_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_lpn_scan_on_conf
 
   bluetooth.mesh.bsim.image.gatt_workq_sys:
     build_only: true
-    extra_overlay_confs:
-      - overlay_gatt.conf
-      - overlay_workq_sys.conf
+    extra_conf_files:
+      - extra_gatt.conf
+      - extra_workq_sys.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_gatt_conf_overlay_workq_sys_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_gatt_conf_extra_workq_sys_conf
 
   bluetooth.mesh.bsim.image.gatt_low_lat:
     build_only: true
-    extra_overlay_confs:
-      - overlay_gatt.conf
-      - overlay_low_lat.conf
+    extra_conf_files:
+      - extra_gatt.conf
+      - extra_low_lat.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_gatt_conf_overlay_low_lat_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_gatt_conf_extra_low_lat_conf
 
   bluetooth.mesh.bsim.image.pst_gatt:
     build_only: true
-    extra_overlay_confs:
-      - overlay_pst.conf
-      - overlay_gatt.conf
+    extra_conf_files:
+      - extra_pst.conf
+      - extra_gatt.conf
     harness_config:
       fixture: bsim_multi_test
-      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_overlay_pst_conf_overlay_gatt_conf
+      bsim_exe_name: tests_bsim_bluetooth_mesh_prj_conf_extra_pst_conf_extra_gatt_conf
 
   bluetooth.mesh.bsim.image.gatt_multi_adv_sets:
     build_only: true
-    extra_overlay_confs:
-      - overlay_gatt.conf
-      - overlay_multi_adv_sets.conf
+    extra_conf_files:
+      - extra_gatt.conf
+      - extra_multi_adv_sets.conf
     harness_config:
       fixture: bsim_multi_test
       bsim_exe_name: >-
-        tests_bsim_bluetooth_mesh_prj_conf_overlay_gatt_conf_overlay_multi_adv_sets_conf
+        tests_bsim_bluetooth_mesh_prj_conf_extra_gatt_conf_extra_multi_adv_sets_conf
 
   bluetooth.mesh.bsim.image.pst_gatt_workq_sys:
     build_only: true
-    extra_overlay_confs:
-      - overlay_pst.conf
-      - overlay_gatt.conf
-      - overlay_workq_sys.conf
+    extra_conf_files:
+      - extra_pst.conf
+      - extra_gatt.conf
+      - extra_workq_sys.conf
     harness_config:
       fixture: bsim_multi_test
       bsim_exe_name: >-
-        tests_bsim_bluetooth_mesh_prj_conf_overlay_pst_conf_overlay_gatt_conf_overlay_workq_sys_conf
+        tests_bsim_bluetooth_mesh_prj_conf_extra_pst_conf_extra_gatt_conf_extra_workq_sys_conf
 
   #################
   # Actual tests: #

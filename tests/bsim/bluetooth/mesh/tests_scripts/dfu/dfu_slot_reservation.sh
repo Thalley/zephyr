@@ -5,5 +5,5 @@
 source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 
 # Test DFU Slot API. This test tests slot reservation APIs.
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest dfu_slot_reservation dfu_dist_dfu_slot_reservation

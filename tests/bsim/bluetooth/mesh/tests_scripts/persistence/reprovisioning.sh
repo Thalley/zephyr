@@ -9,13 +9,13 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # First test: saves data; second test: verifies it.
 
 # Provision, configure and reset a device
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest mesh_pst_repr persistence_reprovisioning_device \
     -flash=../results/${BOARD_TS}_mesh_pst_repr/flash.bin -flash_erase \
 	persistence_reprovisioning_provisioner
 
 # Repeat the test
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTest mesh_pst_repr persistence_reprovisioning_device \
 	-flash=../results/${BOARD_TS}_mesh_pst_repr/flash.bin -flash_rm \
 	persistence_reprovisioning_provisioner

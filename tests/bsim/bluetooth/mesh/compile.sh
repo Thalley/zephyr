@@ -11,18 +11,18 @@ set -ue
 source ${ZEPHYR_BASE}/tests/bsim/compile.source
 
 app=tests/bsim/bluetooth/mesh compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_pst.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_gatt.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_gatt_separate.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_low_lat.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_workq_sys.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_multi_adv_sets.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay=overlay_lpn_scan_on.conf compile
-app=tests/bsim/bluetooth/mesh conf_overlay="overlay_gatt.conf;overlay_workq_sys.conf" compile
-app=tests/bsim/bluetooth/mesh conf_overlay="overlay_gatt.conf;overlay_low_lat.conf" compile
-app=tests/bsim/bluetooth/mesh conf_overlay="overlay_pst.conf;overlay_gatt.conf" compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_pst.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_gatt.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_gatt_separate.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_low_lat.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_workq_sys.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_multi_adv_sets.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file=extra_lpn_scan_on.conf compile
+app=tests/bsim/bluetooth/mesh extra_conf_file="extra_gatt.conf;extra_workq_sys.conf" compile
+app=tests/bsim/bluetooth/mesh extra_conf_file="extra_gatt.conf;extra_low_lat.conf" compile
+app=tests/bsim/bluetooth/mesh extra_conf_file="extra_pst.conf;extra_gatt.conf" compile
 app=tests/bsim/bluetooth/mesh \
-  conf_overlay="overlay_gatt.conf;overlay_multi_adv_sets.conf" compile
+  extra_conf_file="extra_gatt.conf;extra_multi_adv_sets.conf" compile
 app=tests/bsim/bluetooth/mesh \
-  conf_overlay="overlay_pst.conf;overlay_gatt.conf;overlay_workq_sys.conf" compile
+  extra_conf_file="extra_pst.conf;extra_gatt.conf;extra_workq_sys.conf" compile
 wait_for_background_jobs

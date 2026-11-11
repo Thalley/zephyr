@@ -14,7 +14,7 @@ RunTest mesh_prov_pb_adv_multi \
 	prov_device_no_oob \
 	-- -argstest prov-bearer=1
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_prov_pb_gatt_multi \
 	prov_provisioner_multi \
 	prov_device_no_oob \

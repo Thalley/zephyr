@@ -11,5 +11,5 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 # expect the advertiser terminated and cd->end not be called.
 RunTest mesh_adv_tx_send_terminate adv_tx_send_terminate
 
-overlay="overlay_multi_adv_sets_conf"
+overlay="extra_multi_adv_sets_conf"
 RunTest mesh_adv_tx_send_terminate_multi_adv_sets adv_tx_send_terminate

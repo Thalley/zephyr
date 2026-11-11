@@ -31,21 +31,21 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #     - verify that the device is not re-provisioned again.
 
 # Step 1
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_prov_pst_pb_remote_ncrp \
 	prov_provisioner_pb_remote_client_ncrp_provision -flash_erase \
 	prov_device_pb_remote_server_unproved -flash_erase \
 	prov_device_pb_remote_server_ncrp_prepare -flash_erase
 
 # Step 2
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_prov_pst_pb_remote_ncrp \
 	prov_provisioner_pb_remote_client_ncrp \
 	prov_device_pb_remote_server_proved \
 	prov_device_pb_remote_server_ncrp
 
 # Step 3
-overlay=overlay_pst_conf
+overlay=extra_pst_conf
 RunTestFlash mesh_prov_pst_pb_remote_ncrp \
 	prov_provisioner_pb_remote_client_ncrp_second_time -flash_rm \
 	prov_device_pb_remote_server_proved -flash_rm \

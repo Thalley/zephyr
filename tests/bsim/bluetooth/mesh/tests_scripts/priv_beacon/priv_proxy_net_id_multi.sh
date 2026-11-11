@@ -15,7 +15,7 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #    advertisemen from each of the networks within the given time
 #    limit.
 
-overlay=overlay_gatt_conf
+overlay=extra_gatt_conf
 RunTest mesh_priv_proxy_net_id_multi \
 	beacon_tx_priv_multi_net_id \
 	beacon_rx_priv_multi_net_id

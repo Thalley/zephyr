@@ -20,25 +20,25 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 #    beacons are received.
 # 9. Tester sends a new solicitation PDU, with a new and unique sequence number,
 #    and scans to verify that a beacon is received.
-overlay="overlay_pst_conf_overlay_gatt_conf"
+overlay="extra_pst_conf_extra_gatt_conf"
 RunTest mesh_srpl_replay_attack \
 	proxy_sol_tester_immediate_replay_attack \
 	proxy_sol_iut_immediate_replay_attack \
 	-flash=../results/${BOARD_TS}_mesh_srpl_replay_attack/flash.bin -flash_erase
 
-overlay="overlay_pst_conf_overlay_gatt_conf"
+overlay="extra_pst_conf_extra_gatt_conf"
 RunTest mesh_srpl_replay_attack \
 	proxy_sol_tester_power_replay_attack \
 	proxy_sol_iut_power_replay_attack \
 	-flash=../results/${BOARD_TS}_mesh_srpl_replay_attack/flash.bin -flash_rm
 
-overlay="overlay_pst_conf_overlay_gatt_conf_overlay_workq_sys_conf"
+overlay="extra_pst_conf_extra_gatt_conf_extra_workq_sys_conf"
 RunTest mesh_srpl_replay_attack_workq \
 	proxy_sol_tester_immediate_replay_attack \
 	proxy_sol_iut_immediate_replay_attack \
 	-flash=../results/${BOARD_TS}_mesh_srpl_replay_attack/flash.bin -flash_erase
 
-overlay="overlay_pst_conf_overlay_gatt_conf_overlay_workq_sys_conf"
+overlay="extra_pst_conf_extra_gatt_conf_extra_workq_sys_conf"
 RunTest mesh_srpl_replay_attack_workq \
 	proxy_sol_tester_power_replay_attack \
 	proxy_sol_iut_power_replay_attack \
