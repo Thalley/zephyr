@@ -100,23 +100,17 @@ struct bt_aics_gain_settings {
 	int8_t maximum;
 } __packed;
 
-enum bt_aics_notify {
-	AICS_NOTIFY_STATE,
-	AICS_NOTIFY_DESCRIPTION,
-	AICS_NOTIFY_STATUS,
-	AICS_NOTIFY_NUM,
+enum bt_aics_flags {
+	BT_AICS_FLAGS_NOTIFY_STATE,
+	BT_AICS_FLAGS_NOTIFY_DESCRIPTION,
+	BT_AICS_FLAGS_NOTIFY_STATUS,
+	BT_AICS_FLAGS__CB_STATE,
+	BT_AICS_FLAGS__CB_GAIN_SETTING,
+	BT_AICS_FLAGS__CB_TYPE,
+	BT_AICS_FLAGS__CB_STATUS,
+	BT_AICS_FLAGS__CB_DESCRIPTION,
+	BT_AICS_FLAGS_NUM,
 };
-
-enum bt_aics_cb_pending {
-	AICS_CB_STATE,
-	AICS_CB_GAIN_SETTING,
-	AICS_CB_TYPE,
-	AICS_CB_STATUS,
-	AICS_CB_DESCRIPTION,
-	AICS_CB_NUM,
-};
-
-#define AICS_CB_FLAG(cb) (AICS_NOTIFY_NUM + (cb))
 
 struct bt_aics_server {
 	struct bt_aics_state state;
@@ -131,7 +125,7 @@ struct bt_aics_server {
 	struct bt_gatt_service *service_p;
 
 	/* Notification and callback work state */
-	ATOMIC_DEFINE(flags, AICS_NOTIFY_NUM + AICS_CB_NUM);
+	ATOMIC_DEFINE(flags, BT_AICS_FLAGS_NUM);
 	struct k_work_delayable notify_work;
 };
 

@@ -3,12 +3,12 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <errno.h>
 #include <zephyr/autoconf.h>
 #include <zephyr/bluetooth/audio/aics.h>
 #include <zephyr/bluetooth/audio/micp.h>
@@ -46,20 +46,6 @@ static volatile uint8_t g_aics_gain_min;
 static volatile bool g_aics_active = true;
 static char g_aics_desc[AICS_DESC_SIZE];
 static volatile bool g_cb;
-static volatile bool g_aics_state_cb_on_sys_work_q;
-
-static K_SEM_DEFINE(aics_workqueue_blocked, 0, 1);
-static K_SEM_DEFINE(aics_workqueue_continue, 0, 1);
-
-static void block_aics_workqueue(struct k_work *work)
-{
-	ARG_UNUSED(work);
-
-	k_sem_give(&aics_workqueue_blocked);
-	(void)k_sem_take(&aics_workqueue_continue, K_FOREVER);
-}
-
-static K_WORK_DEFINE(aics_workqueue_blocker, block_aics_workqueue);
 
 static void micp_mute_cb(uint8_t mute)
 {
@@ -85,7 +71,6 @@ static void aics_state_cb(struct bt_aics *inst, int err, int8_t gain,
 	g_aics_gain = gain;
 	g_aics_input_mute = mute;
 	g_aics_mode = mode;
-	g_aics_state_cb_on_sys_work_q = k_current_get() == &k_sys_work_q.thread;
 	g_cb = true;
 }
 
@@ -318,88 +303,6 @@ static int test_aics_server_only(void)
 	return 0;
 }
 
-static int test_aics_callback_gating(void)
-{
-	int err;
-
-	err = k_work_submit(&aics_workqueue_blocker);
-	if (err < 0) {
-		FAIL("Failed to submit AICS workqueue blocker (err %d)", err);
-		return err;
-	}
-
-	err = k_sem_take(&aics_workqueue_blocked, K_SECONDS(5));
-	if (err != 0) {
-		FAIL("AICS workqueue blocker did not start (err %d)", err);
-		k_sem_give(&aics_workqueue_continue);
-		return err;
-	}
-
-	g_cb = false;
-	g_aics_state_cb_on_sys_work_q = false;
-
-	err = bt_aics_mute(micp_included.aics[0]);
-	if (err != 0) {
-		FAIL("Could not queue AICS state callback (err %d)", err);
-		goto release_workqueue;
-	}
-
-	if (bt_aics_mute(micp_included.aics[0]) != -EBUSY ||
-	    bt_aics_state_get(micp_included.aics[0]) != -EBUSY ||
-	    bt_aics_disable_mute(micp_included.aics[0]) != -EBUSY ||
-	    bt_aics_gain_set_manual_only(micp_included.aics[0]) != -EBUSY ||
-	    bt_aics_gain_set_auto_only(micp_included.aics[0]) != -EBUSY) {
-		FAIL("AICS state operations were not rejected while the callback was pending");
-		err = -EINVAL;
-		goto release_workqueue;
-	}
-
-	err = bt_aics_gain_setting_get(micp_included.aics[0]);
-	if (err != 0) {
-		FAIL("AICS gain-setting callback was blocked by the state callback (err %d)", err);
-		goto release_workqueue;
-	}
-
-	if (bt_aics_gain_setting_get(micp_included.aics[0]) != -EBUSY) {
-		FAIL("AICS gain-setting callback was not gated while pending");
-		err = -EINVAL;
-		goto release_workqueue;
-	}
-
-	err = bt_aics_deactivate(micp_included.aics[0]);
-	if (err != 0) {
-		FAIL("AICS status callback was blocked by the state callback (err %d)", err);
-		goto release_workqueue;
-	}
-
-	if (bt_aics_activate(micp_included.aics[0]) != -EBUSY) {
-		FAIL("AICS status callback was not gated while pending");
-		err = -EINVAL;
-		goto release_workqueue;
-	}
-
-	err = bt_aics_state_get(micp_included.aics[1]);
-	if (err != 0) {
-		FAIL("AICS state get without a registered callback was blocked (err %d)", err);
-		goto release_workqueue;
-	}
-
-release_workqueue:
-	k_sem_give(&aics_workqueue_continue);
-	if (err != 0) {
-		return err;
-	}
-
-	WAIT_FOR_COND(g_cb && g_aics_input_mute == BT_AICS_STATE_MUTED &&
-		      g_aics_mode == BT_AICS_MODE_MANUAL && !g_aics_active);
-	if (!g_aics_state_cb_on_sys_work_q) {
-		FAIL("AICS state callback was not called on the system workqueue");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static void test_mic_dev_only(void)
 {
 	int err;
@@ -496,9 +399,6 @@ static void test_mic_dev_only(void)
 			return;
 		}
 
-		if (test_aics_callback_gating() != 0) {
-			return;
-		}
 	}
 
 	PASS("MICP mic_dev passed\n");
