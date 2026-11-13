@@ -349,6 +349,10 @@ typedef void (*bt_aics_discover_cb)(struct bt_aics *inst, int err);
  * @brief Struct to hold callbacks for the Audio Input Control Service.
  *
  * Used by both clients and servers
+ *
+ * For server instances the callbacks are called from the system workqueue. While a callback is
+ * pending, local operations that would trigger the same callback fail with -EBUSY, and remote
+ * writes that would trigger it are rejected with @ref BT_ATT_ERR_PROCEDURE_IN_PROGRESS.
  */
 struct bt_aics_cb {
 	/** The audio input state has changed */

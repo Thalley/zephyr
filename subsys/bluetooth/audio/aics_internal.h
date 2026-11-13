@@ -107,6 +107,15 @@ enum bt_aics_notify {
 	AICS_NOTIFY_NUM,
 };
 
+enum bt_aics_cb_pending {
+	AICS_CB_STATE,
+	AICS_CB_GAIN_SETTING,
+	AICS_CB_TYPE,
+	AICS_CB_STATUS,
+	AICS_CB_DESCRIPTION,
+	AICS_CB_NUM,
+};
+
 struct bt_aics_server {
 	struct bt_aics_state state;
 	struct bt_aics_gain_settings gain_settings;
@@ -120,6 +129,8 @@ struct bt_aics_server {
 	struct bt_gatt_service *service_p;
 
 	ATOMIC_DEFINE(notify, AICS_NOTIFY_NUM);
+	/* Local callbacks to be called from notify_work */
+	ATOMIC_DEFINE(cb_pending, AICS_CB_NUM);
 	struct k_work_delayable notify_work;
 };
 
