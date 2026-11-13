@@ -350,11 +350,8 @@ typedef void (*bt_aics_discover_cb)(struct bt_aics *inst, int err);
  *
  * Used by both clients and servers
  *
- * For server instances the callbacks are called from the system workqueue. While a callback is
- * pending, local operations that would trigger the same callback fail with -EBUSY, and remote
- * control point writes that would trigger it are rejected with
- * @ref BT_ATT_ERR_PROCEDURE_IN_PROGRESS. Remote description writes are coalesced and the callback
- * receives the latest description.
+ * For server instances the callbacks are called from the system workqueue. Remote description
+ * writes are coalesced and the callback receives the latest description.
  */
 struct bt_aics_cb {
 	/** The audio input state has changed */
@@ -408,7 +405,8 @@ int bt_aics_discover(struct bt_conn *conn, struct bt_aics *inst,
  *
  * @param inst         The instance pointer.
  *
- * @return 0 if success, errno on failure.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server status callback is pending.
  */
 int bt_aics_deactivate(struct bt_aics *inst);
 
@@ -421,7 +419,8 @@ int bt_aics_deactivate(struct bt_aics *inst);
  *
  * @param inst         The instance pointer.
  *
- * @return 0 if success, errno on failure.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server status callback is pending.
  */
 int bt_aics_activate(struct bt_aics *inst);
 
@@ -430,7 +429,8 @@ int bt_aics_activate(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_state_get(struct bt_aics *inst);
 
@@ -439,7 +439,8 @@ int bt_aics_state_get(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server gain setting callback is pending.
  */
 int bt_aics_gain_setting_get(struct bt_aics *inst);
 
@@ -448,7 +449,8 @@ int bt_aics_gain_setting_get(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server type callback is pending.
  */
 int bt_aics_type_get(struct bt_aics *inst);
 
@@ -457,7 +459,8 @@ int bt_aics_type_get(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server status callback is pending.
  */
 int bt_aics_status_get(struct bt_aics *inst);
 
@@ -469,7 +472,8 @@ int bt_aics_status_get(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, errno value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_disable_mute(struct bt_aics *inst);
 
@@ -478,7 +482,8 @@ int bt_aics_disable_mute(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_unmute(struct bt_aics *inst);
 
@@ -487,7 +492,8 @@ int bt_aics_unmute(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_mute(struct bt_aics *inst);
 
@@ -496,7 +502,8 @@ int bt_aics_mute(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, errno value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_gain_set_manual_only(struct bt_aics *inst);
 
@@ -508,7 +515,8 @@ int bt_aics_gain_set_manual_only(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, errno value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_gain_set_auto_only(struct bt_aics *inst);
 
@@ -517,7 +525,8 @@ int bt_aics_gain_set_auto_only(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_manual_gain_set(struct bt_aics *inst);
 
@@ -526,7 +535,8 @@ int bt_aics_manual_gain_set(struct bt_aics *inst);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_automatic_gain_set(struct bt_aics *inst);
 
@@ -537,7 +547,8 @@ int bt_aics_automatic_gain_set(struct bt_aics *inst);
  * @param gain          The gain to set (-128 to 127) in gain setting units
  *                      (see @ref bt_aics_gain_setting_cb).
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server state callback is pending.
  */
 int bt_aics_gain_set(struct bt_aics *inst, int8_t gain);
 
@@ -546,7 +557,8 @@ int bt_aics_gain_set(struct bt_aics *inst, int8_t gain);
  *
  * @param inst          The instance pointer.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server description callback is pending.
  */
 int bt_aics_description_get(struct bt_aics *inst);
 
@@ -556,7 +568,8 @@ int bt_aics_description_get(struct bt_aics *inst);
  * @param inst          The instance pointer.
  * @param description   The description as an UTF-8 encoded string.
  *
- * @return 0 on success, GATT error value on fail.
+ * @return 0 on success, error value on failure.
+ * @retval -EBUSY A server description callback is pending.
  */
 int bt_aics_description_set(struct bt_aics *inst, const char *description);
 
