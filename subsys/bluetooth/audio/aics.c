@@ -49,6 +49,57 @@ ZASSERT_MODULE(DEFAULT); /* for BT_AUDIO_LOCK_ASSERT */
 /* Mutex that should guard all access to aics_insts and the individual instances in that array */
 static K_MUTEX_DEFINE(aics_mutex);
 
+static bool cb_is_registered(const struct bt_aics *inst, enum bt_aics_cb_pending cb)
+{
+	const struct bt_aics_cb *cbs = inst->srv.cb;
+
+	if (cbs == NULL) {
+		return false;
+	}
+
+	switch (cb) {
+	case AICS_CB_STATE:
+		return cbs->state != NULL;
+	case AICS_CB_GAIN_SETTING:
+		return cbs->gain_setting != NULL;
+	case AICS_CB_TYPE:
+		return cbs->type != NULL;
+	case AICS_CB_STATUS:
+		return cbs->status != NULL;
+	case AICS_CB_DESCRIPTION:
+		return cbs->description != NULL;
+	default:
+		return false;
+	}
+}
+
+/* Returns true if the callback is registered and has not yet been called since it was scheduled */
+static bool cb_is_busy(const struct bt_aics *inst, enum bt_aics_cb_pending cb)
+{
+	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
+
+	return cb_is_registered(inst, cb) && atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(cb));
+}
+
+static void cb_schedule(struct bt_aics *inst, enum bt_aics_cb_pending cb)
+{
+	int err;
+
+	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
+
+	if (!cb_is_registered(inst, cb)) {
+		LOG_DBG("Callback %d not registered for instance %p", cb, inst);
+		return;
+	}
+
+	atomic_set_bit(inst->srv.flags, AICS_CB_FLAG(cb));
+
+	err = k_work_reschedule(&inst->srv.notify_work, K_NO_WAIT);
+	if (err < 0) {
+		LOG_ERR("Failed to schedule callback %d err %d", cb, err);
+	}
+}
+
 #if defined(CONFIG_BT_AICS)
 
 static ssize_t write_description(struct bt_conn *conn,
@@ -236,7 +287,7 @@ static void notify_work_reschedule(struct bt_aics *inst, enum bt_aics_notify not
 
 	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
 
-	atomic_set_bit(inst->srv.notify, notify);
+	atomic_set_bit(inst->srv.flags, notify);
 
 	err = k_work_reschedule(&inst->srv.notify_work, delay);
 	if (err < 0) {
@@ -262,10 +313,8 @@ static void notify(struct bt_aics *inst, enum bt_aics_notify notify, const struc
 	}
 }
 
-static void notify_work_handler(struct k_work *work)
+static bool notify_work_lock(struct k_work_delayable *d_work)
 {
-	struct k_work_delayable *d_work = k_work_delayable_from_work(work);
-	struct bt_aics *inst = CONTAINER_OF(d_work, struct bt_aics, srv.notify_work);
 	int err;
 
 	err = k_mutex_lock(&aics_mutex, K_NO_WAIT);
@@ -276,20 +325,120 @@ static void notify_work_handler(struct k_work *work)
 			LOG_ERR("Failed to reschedule notification err %d", err);
 		}
 
+		return false;
+	}
+
+	return true;
+}
+
+static void notify_work_handler(struct k_work *work)
+{
+	struct k_work_delayable *d_work = k_work_delayable_from_work(work);
+	struct bt_aics *inst = CONTAINER_OF(d_work, struct bt_aics, srv.notify_work);
+	bt_aics_gain_setting_cb gain_setting_cb = NULL;
+	bt_aics_description_cb description_cb = NULL;
+	char description[BT_AICS_DESC_BUF_SIZE];
+	struct bt_aics_gain_settings gain_settings;
+	bt_aics_status_cb status_cb = NULL;
+	bt_aics_state_cb state_cb = NULL;
+	bt_aics_type_cb type_cb = NULL;
+	struct bt_aics_state state;
+	bool active;
+	uint8_t type;
+
+	if (!notify_work_lock(d_work)) {
 		return;
 	}
 
-	if (atomic_test_and_clear_bit(inst->srv.notify, AICS_NOTIFY_STATE)) {
+	/* Copy the values for the pending callbacks so that the callbacks can be called without
+	 * holding the mutex. The bits are cleared while holding the mutex, so any new change will
+	 * set the bit and reschedule this work, ensuring that callbacks are called in order.
+	 */
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_STATE)) &&
+	    inst->srv.cb != NULL) {
+		state_cb = inst->srv.cb->state;
+		state = inst->srv.state;
+	}
+
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_GAIN_SETTING)) &&
+	    inst->srv.cb != NULL) {
+		gain_setting_cb = inst->srv.cb->gain_setting;
+		gain_settings = inst->srv.gain_settings;
+	}
+
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_TYPE)) &&
+	    inst->srv.cb != NULL) {
+		type_cb = inst->srv.cb->type;
+		type = inst->srv.type;
+	}
+
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_STATUS)) &&
+	    inst->srv.cb != NULL) {
+		status_cb = inst->srv.cb->status;
+		active = inst->srv.status == BT_AICS_STATUS_ACTIVE;
+	}
+
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_DESCRIPTION)) &&
+	    inst->srv.cb != NULL) {
+		description_cb = inst->srv.cb->description;
+		(void)strcpy(description, inst->srv.description);
+	}
+
+	bt_audio_mutex_unlock(&aics_mutex);
+
+	/* Local callbacks are always called before any notifications are attempted */
+	if (state_cb != NULL) {
+		state_cb(inst, 0, state.gain, state.mute, state.gain_mode);
+	}
+
+	if (gain_setting_cb != NULL) {
+		gain_setting_cb(inst, 0, gain_settings.units, gain_settings.minimum,
+				gain_settings.maximum);
+	}
+
+	if (type_cb != NULL) {
+		type_cb(inst, 0, type);
+	}
+
+	if (status_cb != NULL) {
+		status_cb(inst, 0, active);
+	}
+
+	if (description_cb != NULL) {
+		description_cb(inst, 0, description);
+	}
+
+	if (!notify_work_lock(d_work)) {
+		return;
+	}
+
+	if (atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_STATE)) ||
+	    atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_GAIN_SETTING)) ||
+	    atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_TYPE)) ||
+	    atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_STATUS)) ||
+	    atomic_test_bit(inst->srv.flags, AICS_CB_FLAG(AICS_CB_DESCRIPTION))) {
+		int err;
+
+		err = k_work_reschedule(d_work, K_NO_WAIT);
+		if (err < 0) {
+			LOG_ERR("Failed to reschedule callback work err %d", err);
+		}
+
+		bt_audio_mutex_unlock(&aics_mutex);
+		return;
+	}
+
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_NOTIFY_STATE)) {
 		notify(inst, AICS_NOTIFY_STATE, BT_UUID_AICS_STATE, &inst->srv.state,
 		       sizeof(inst->srv.state));
 	}
 
-	if (atomic_test_and_clear_bit(inst->srv.notify, AICS_NOTIFY_DESCRIPTION)) {
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_NOTIFY_DESCRIPTION)) {
 		notify(inst, AICS_NOTIFY_DESCRIPTION, BT_UUID_AICS_DESCRIPTION,
 		       &inst->srv.description, strlen(inst->srv.description));
 	}
 
-	if (atomic_test_and_clear_bit(inst->srv.notify, AICS_NOTIFY_STATUS)) {
+	if (atomic_test_and_clear_bit(inst->srv.flags, AICS_NOTIFY_STATUS)) {
 		notify(inst, AICS_NOTIFY_STATUS, BT_UUID_AICS_INPUT_STATUS, &inst->srv.status,
 		       sizeof(inst->srv.status));
 	}
@@ -301,8 +450,27 @@ static void value_changed(struct bt_aics *inst, enum bt_aics_notify notify)
 {
 	notify_work_reschedule(inst, notify, K_NO_WAIT);
 }
+
+static void value_and_callback_changed(struct bt_aics *inst, enum bt_aics_notify notify,
+				       enum bt_aics_cb_pending cb)
+{
+	int err;
+
+	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
+
+	atomic_set_bit(inst->srv.flags, notify);
+	if (cb_is_registered(inst, cb)) {
+		atomic_set_bit(inst->srv.flags, AICS_CB_FLAG(cb));
+	}
+
+	err = k_work_reschedule(&inst->srv.notify_work, K_NO_WAIT);
+	if (err < 0) {
+		LOG_ERR("Failed to reschedule AICS work err %d", err);
+	}
+}
 #else
 #define value_changed(...)
+#define value_and_callback_changed(...)
 #endif /* CONFIG_BT_AICS */
 
 static uint8_t valid_control_point_write(uint16_t len, uint16_t offset,
@@ -430,9 +598,10 @@ static uint8_t handle_set_automatic_mode_op(struct bt_aics *inst, bool *state_ch
 }
 
 static ssize_t aics_control_write(struct bt_aics *inst, const void *buf, uint16_t len,
-				  uint16_t offset, bool *state_change)
+				  uint16_t offset)
 {
 	const struct bt_aics_gain_control *cp = buf;
+	bool state_change = false;
 	int ret;
 
 	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
@@ -444,19 +613,19 @@ static ssize_t aics_control_write(struct bt_aics *inst, const void *buf, uint16_
 
 	switch (cp->cp.opcode) {
 	case BT_AICS_OPCODE_SET_GAIN:
-		ret = handle_set_gain_op(inst, cp, state_change);
+		ret = handle_set_gain_op(inst, cp, &state_change);
 		break;
 	case BT_AICS_OPCODE_UNMUTE:
-		ret = handle_unmute_op(inst, state_change);
+		ret = handle_unmute_op(inst, &state_change);
 		break;
 	case BT_AICS_OPCODE_MUTE:
-		ret = handle_mute_op(inst, state_change);
+		ret = handle_mute_op(inst, &state_change);
 		break;
 	case BT_AICS_OPCODE_SET_MANUAL:
-		ret = handle_set_manual_mode_op(inst, state_change);
+		ret = handle_set_manual_mode_op(inst, &state_change);
 		break;
 	case BT_AICS_OPCODE_SET_AUTO:
-		ret = handle_set_automatic_mode_op(inst, state_change);
+		ret = handle_set_automatic_mode_op(inst, &state_change);
 		break;
 	default:
 		ret = BT_AICS_ERR_OP_NOT_SUPPORTED;
@@ -466,7 +635,7 @@ static ssize_t aics_control_write(struct bt_aics *inst, const void *buf, uint16_
 		return BT_GATT_ERR(ret);
 	}
 
-	if (*state_change) {
+	if (state_change) {
 		inst->srv.state.change_counter++; /* May overflow which is OK */
 
 		LOG_DBG("New state: gain %d, mute %u, gain_mode %s (0x%02X), counter %u",
@@ -474,7 +643,7 @@ static ssize_t aics_control_write(struct bt_aics *inst, const void *buf, uint16_
 			bt_aics_mode_to_str(inst->srv.state.gain_mode), inst->srv.state.gain_mode,
 			inst->srv.state.change_counter);
 
-		value_changed(inst, AICS_NOTIFY_STATE);
+		value_and_callback_changed(inst, AICS_NOTIFY_STATE, AICS_CB_STATE);
 	}
 
 	return len;
@@ -485,11 +654,6 @@ static ssize_t write_aics_control(struct bt_conn *conn, const struct bt_gatt_att
 				  const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
 	struct bt_aics *inst = BT_AUDIO_CHRC_USER_DATA(attr);
-	bt_aics_state_cb state_cb = NULL;
-	bool state_change = false;
-	uint8_t gain_mode = 0U;
-	uint8_t mute = 0U;
-	int8_t gain = 0;
 	ssize_t ret;
 
 	ARG_UNUSED(conn);
@@ -497,20 +661,14 @@ static ssize_t write_aics_control(struct bt_conn *conn, const struct bt_gatt_att
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
-	ret = aics_control_write(inst, buf, len, offset, &state_change);
-
-	if (state_change && inst->srv.cb != NULL && inst->srv.cb->state != NULL) {
-		state_cb = inst->srv.cb->state;
-		gain = inst->srv.state.gain;
-		mute = inst->srv.state.mute;
-		gain_mode = inst->srv.state.gain_mode;
+	if (cb_is_busy(inst, AICS_CB_STATE)) {
+		LOG_DBG("State callback pending for instance %p", inst);
+		ret = BT_GATT_ERR(BT_ATT_ERR_PROCEDURE_IN_PROGRESS);
+	} else {
+		ret = aics_control_write(inst, buf, len, offset);
 	}
 
 	bt_audio_mutex_unlock(&aics_mutex);
-
-	if (state_cb != NULL) {
-		state_cb(inst, 0, gain, mute, gain_mode);
-	}
 
 	return ret;
 }
@@ -525,7 +683,7 @@ static void aics_description_cfg_changed(const struct bt_gatt_attr *attr,
 #endif /* CONFIG_BT_AICS */
 
 static ssize_t aics_description_write(struct bt_aics *inst, const void *buf, uint16_t len,
-				      uint16_t offset, bool *state_change)
+				      uint16_t offset)
 {
 	BT_AUDIO_LOCK_ASSERT(&aics_mutex);
 
@@ -544,9 +702,7 @@ static ssize_t aics_description_write(struct bt_aics *inst, const void *buf, uin
 		memcpy(inst->srv.description, buf, len);
 		inst->srv.description[len] = '\0';
 
-		value_changed(inst, AICS_NOTIFY_DESCRIPTION);
-
-		*state_change = true;
+		value_and_callback_changed(inst, AICS_NOTIFY_DESCRIPTION, AICS_CB_DESCRIPTION);
 	}
 
 	LOG_DBG("%s", inst->srv.description);
@@ -561,9 +717,6 @@ static ssize_t write_description(struct bt_conn *conn,
 				 uint8_t flags)
 {
 	struct bt_aics *inst = BT_AUDIO_CHRC_USER_DATA(attr);
-	bt_aics_description_cb description_cb = NULL;
-	char description[BT_AICS_DESC_BUF_SIZE];
-	bool state_change = false;
 	ssize_t ret;
 
 	ARG_UNUSED(conn);
@@ -571,18 +724,9 @@ static ssize_t write_description(struct bt_conn *conn,
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
-	ret = aics_description_write(inst, buf, len, offset, &state_change);
-
-	if (state_change && inst->srv.cb != NULL && inst->srv.cb->description != NULL) {
-		description_cb = inst->srv.cb->description;
-		(void)strcpy(description, inst->srv.description);
-	}
+	ret = aics_description_write(inst, buf, len, offset);
 
 	bt_audio_mutex_unlock(&aics_mutex);
-
-	if (description_cb != NULL) {
-		description_cb(inst, 0, description);
-	}
 
 	return ret;
 }
@@ -591,30 +735,21 @@ static ssize_t write_description(struct bt_conn *conn,
 static int aics_local_control_write(struct bt_aics *inst, struct bt_aics_gain_control *cp,
 				    uint16_t len)
 {
-	bt_aics_state_cb state_cb = NULL;
-	bool state_change = false;
-	uint8_t gain_mode = 0U;
-	uint8_t mute = 0U;
-	int8_t gain = 0;
 	ssize_t ret;
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
-	cp->cp.counter = inst->srv.state.change_counter;
-	ret = aics_control_write(inst, cp, len, 0U, &state_change);
+	if (cb_is_busy(inst, AICS_CB_STATE)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("State callback pending for instance %p", inst);
 
-	if (state_change && inst->srv.cb != NULL && inst->srv.cb->state != NULL) {
-		state_cb = inst->srv.cb->state;
-		gain = inst->srv.state.gain;
-		mute = inst->srv.state.mute;
-		gain_mode = inst->srv.state.gain_mode;
+		return -EBUSY;
 	}
+
+	cp->cp.counter = inst->srv.state.change_counter;
+	ret = aics_control_write(inst, cp, len, 0U);
 
 	bt_audio_mutex_unlock(&aics_mutex);
-
-	if (state_cb != NULL) {
-		state_cb(inst, 0, gain, mute, gain_mode);
-	}
 
 	if (ret < 0) {
 		return (int)ret;
@@ -744,7 +879,7 @@ int bt_aics_register(struct bt_aics *aics, struct bt_aics_register_param *param)
 	aics->srv.status = param->status ? BT_AICS_STATUS_ACTIVE : BT_AICS_STATUS_INACTIVE;
 	aics->srv.cb = param->cb;
 
-	atomic_clear(aics->srv.notify);
+	atomic_clear(aics->srv.flags);
 	k_work_init_delayable(&aics->srv.notify_work, notify_work_handler);
 
 	if (param->description) {
@@ -815,8 +950,6 @@ struct bt_aics *bt_aics_free_instance_get(void)
 
 int bt_aics_deactivate(struct bt_aics *inst)
 {
-	bt_aics_status_cb status_cb = NULL;
-
 	if (!inst) {
 		LOG_DBG("NULL instance");
 		return -EINVAL;
@@ -828,32 +961,27 @@ int bt_aics_deactivate(struct bt_aics *inst)
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
+	if (cb_is_busy(inst, AICS_CB_STATUS)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("Status callback pending for instance %p", inst);
+
+		return -EBUSY;
+	}
+
 	if (inst->srv.status == BT_AICS_STATUS_ACTIVE) {
 		inst->srv.status = BT_AICS_STATUS_INACTIVE;
 		LOG_DBG("Instance %p: Status was set to inactive", inst);
 
-		value_changed(inst, AICS_NOTIFY_STATUS);
-
-		if (inst->srv.cb && inst->srv.cb->status) {
-			status_cb = inst->srv.cb->status;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
+		value_and_callback_changed(inst, AICS_NOTIFY_STATUS, AICS_CB_STATUS);
 	}
 
 	bt_audio_mutex_unlock(&aics_mutex);
-
-	if (status_cb != NULL) {
-		status_cb(inst, 0, false);
-	}
 
 	return 0;
 }
 
 int bt_aics_activate(struct bt_aics *inst)
 {
-	bt_aics_status_cb status_cb = NULL;
-
 	if (!inst) {
 		LOG_DBG("NULL instance");
 		return -EINVAL;
@@ -865,24 +993,21 @@ int bt_aics_activate(struct bt_aics *inst)
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
+	if (cb_is_busy(inst, AICS_CB_STATUS)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("Status callback pending for instance %p", inst);
+
+		return -EBUSY;
+	}
+
 	if (inst->srv.status == BT_AICS_STATUS_INACTIVE) {
 		inst->srv.status = BT_AICS_STATUS_ACTIVE;
 		LOG_DBG("Instance %p: Status was set to active", inst);
 
-		value_changed(inst, AICS_NOTIFY_STATUS);
-
-		if (inst->srv.cb && inst->srv.cb->status) {
-			status_cb = inst->srv.cb->status;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
+		value_and_callback_changed(inst, AICS_NOTIFY_STATUS, AICS_CB_STATUS);
 	}
 
 	bt_audio_mutex_unlock(&aics_mutex);
-
-	if (status_cb != NULL) {
-		status_cb(inst, 0, true);
-	}
 
 	return 0;
 }
@@ -896,6 +1021,13 @@ int bt_aics_gain_set_manual_only(struct bt_aics *inst)
 	}
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
+
+	if (cb_is_busy(inst, AICS_CB_STATE)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("State callback pending for instance %p", inst);
+
+		return -EBUSY;
+	}
 
 	inst->srv.state.gain_mode = BT_AICS_MODE_MANUAL_ONLY;
 	value_changed(inst, AICS_NOTIFY_STATE);
@@ -914,12 +1046,38 @@ int bt_aics_gain_set_auto_only(struct bt_aics *inst)
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
 
+	if (cb_is_busy(inst, AICS_CB_STATE)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("State callback pending for instance %p", inst);
+
+		return -EBUSY;
+	}
+
 	inst->srv.state.gain_mode = BT_AICS_MODE_AUTO_ONLY;
 	value_changed(inst, AICS_NOTIFY_STATE);
 
 	bt_audio_mutex_unlock(&aics_mutex);
 
 	return 0;
+}
+
+static int aics_local_read(struct bt_aics *inst, enum bt_aics_cb_pending cb)
+{
+	int ret;
+
+	bt_audio_mutex_lock_forever(&aics_mutex);
+
+	if (cb_is_busy(inst, cb)) {
+		LOG_DBG("Callback %d pending for instance %p", cb, inst);
+		ret = -EBUSY;
+	} else {
+		cb_schedule(inst, cb);
+		ret = 0;
+	}
+
+	bt_audio_mutex_unlock(&aics_mutex);
+
+	return ret;
 }
 
 int bt_aics_state_get(struct bt_aics *inst)
@@ -933,29 +1091,7 @@ int bt_aics_state_get(struct bt_aics *inst)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_state_get(inst);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_state_cb state_cb = NULL;
-		uint8_t gain_mode = 0U;
-		uint8_t mute = 0U;
-		int8_t gain = 0;
-
-		bt_audio_mutex_lock_forever(&aics_mutex);
-
-		if (inst->srv.cb && inst->srv.cb->state) {
-			state_cb = inst->srv.cb->state;
-			gain = inst->srv.state.gain;
-			mute = inst->srv.state.mute;
-			gain_mode = inst->srv.state.gain_mode;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
-
-		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (state_cb != NULL) {
-			state_cb(inst, 0, gain, mute, gain_mode);
-		}
-
-		return 0;
+		return aics_local_read(inst, AICS_CB_STATE);
 	}
 
 	return -ENOTSUP;
@@ -971,29 +1107,7 @@ int bt_aics_gain_setting_get(struct bt_aics *inst)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_gain_setting_get(inst);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_gain_setting_cb setting_cb = NULL;
-		int8_t minimum = 0;
-		int8_t maximum = 0;
-		uint8_t units = 0U;
-
-		bt_audio_mutex_lock_forever(&aics_mutex);
-
-		if (inst->srv.cb && inst->srv.cb->gain_setting) {
-			setting_cb = inst->srv.cb->gain_setting;
-			units = inst->srv.gain_settings.units;
-			minimum = inst->srv.gain_settings.minimum;
-			maximum = inst->srv.gain_settings.maximum;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
-
-		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (setting_cb != NULL) {
-			setting_cb(inst, 0, units, minimum, maximum);
-		}
-
-		return 0;
+		return aics_local_read(inst, AICS_CB_GAIN_SETTING);
 	}
 
 	return -ENOTSUP;
@@ -1009,25 +1123,7 @@ int bt_aics_type_get(struct bt_aics *inst)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_type_get(inst);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_type_cb type_cb = NULL;
-		uint8_t type = 0U;
-
-		bt_audio_mutex_lock_forever(&aics_mutex);
-
-		if (inst->srv.cb && inst->srv.cb->type) {
-			type_cb = inst->srv.cb->type;
-			type = inst->srv.type;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
-
-		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (type_cb != NULL) {
-			type_cb(inst, 0, type);
-		}
-
-		return 0;
+		return aics_local_read(inst, AICS_CB_TYPE);
 	}
 
 	return -ENOTSUP;
@@ -1043,25 +1139,7 @@ int bt_aics_status_get(struct bt_aics *inst)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_status_get(inst);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_status_cb status_cb = NULL;
-		bool active = false;
-
-		bt_audio_mutex_lock_forever(&aics_mutex);
-
-		if (inst->srv.cb && inst->srv.cb->status) {
-			status_cb = inst->srv.cb->status;
-			active = inst->srv.status == BT_AICS_STATUS_ACTIVE;
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
-
-		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (status_cb != NULL) {
-			status_cb(inst, 0, active);
-		}
-
-		return 0;
+		return aics_local_read(inst, AICS_CB_STATUS);
 	}
 
 	return -ENOTSUP;
@@ -1075,6 +1153,13 @@ int bt_aics_disable_mute(struct bt_aics *inst)
 	}
 
 	bt_audio_mutex_lock_forever(&aics_mutex);
+
+	if (cb_is_busy(inst, AICS_CB_STATE)) {
+		bt_audio_mutex_unlock(&aics_mutex);
+		LOG_DBG("State callback pending for instance %p", inst);
+
+		return -EBUSY;
+	}
 
 	inst->srv.state.mute = BT_AICS_STATE_MUTE_DISABLED;
 	value_changed(inst, AICS_NOTIFY_STATE);
@@ -1195,25 +1280,7 @@ int bt_aics_description_get(struct bt_aics *inst)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_description_get(inst);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_description_cb description_cb = NULL;
-		char description[BT_AICS_DESC_BUF_SIZE];
-
-		bt_audio_mutex_lock_forever(&aics_mutex);
-
-		if (inst->srv.cb && inst->srv.cb->description) {
-			description_cb = inst->srv.cb->description;
-			(void)strcpy(description, inst->srv.description);
-		} else {
-			LOG_DBG("Callback not registered for instance %p", inst);
-		}
-
-		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (description_cb != NULL) {
-			description_cb(inst, 0, description);
-		}
-
-		return 0;
+		return aics_local_read(inst, AICS_CB_DESCRIPTION);
 	}
 
 	return -ENOTSUP;
@@ -1234,26 +1301,20 @@ int bt_aics_description_set(struct bt_aics *inst, const char *description)
 	if (IS_ENABLED(CONFIG_BT_AICS_CLIENT) && inst->client_instance) {
 		return bt_aics_client_description_set(inst, description);
 	} else if (IS_ENABLED(CONFIG_BT_AICS) && !inst->client_instance) {
-		bt_aics_description_cb description_cb = NULL;
-		char desc[BT_AICS_DESC_BUF_SIZE];
-		bool state_change = false;
 		ssize_t ret;
 
 		bt_audio_mutex_lock_forever(&aics_mutex);
 
-		ret = aics_description_write(inst, description, strlen(description), 0U,
-					     &state_change);
+		if (cb_is_busy(inst, AICS_CB_DESCRIPTION)) {
+			bt_audio_mutex_unlock(&aics_mutex);
+			LOG_DBG("Description callback pending for instance %p", inst);
 
-		if (state_change && inst->srv.cb != NULL && inst->srv.cb->description != NULL) {
-			description_cb = inst->srv.cb->description;
-			(void)strcpy(desc, inst->srv.description);
+			return -EBUSY;
 		}
+
+		ret = aics_description_write(inst, description, strlen(description), 0U);
 
 		bt_audio_mutex_unlock(&aics_mutex);
-
-		if (description_cb != NULL) {
-			description_cb(inst, 0, desc);
-		}
 
 		return ret < 0 ? (int)ret : 0;
 	}
